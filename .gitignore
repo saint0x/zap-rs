@@ -1,7 +1,6 @@
 /target
 .DS_Store
 Cargo.lock
-
-# Remove these since they should be tracked
-# PHILOSOPHY.md
-# DEVELOPMENT.md
+/docs
+PHILOSOPHY.md
+DEVELOPMENT.md

@@ -1,0 +1,28 @@
+{
+  "name": "@zap-rs/core",
+  "version": "0.1.0",
+  "description": "TypeScript bindings for zap-rs web framework",
+  "main": "dist/src/zap.js",
+  "types": "dist/src/zap.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest -c ../../tests/napi/jest.config.js",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "reflect-metadata": "^0.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/jest": "^29.0.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+} 

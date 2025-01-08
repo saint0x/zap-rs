@@ -17,46 +17,27 @@ impl TrieNode {
     }
 
     pub fn insert(&self, path: &str, handler: RouteHandler) -> Result<(), Error> {
-        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-        let mut current = Arc::new(TrieNode::new());
-        {
-            // Copy all data from self to the new node
-            for item in self.children.iter() {
-                current.children.insert(item.key().clone(), item.value().clone());
-            }
-            for item in self.param_child.iter() {
-                current.param_child.insert(item.key().clone(), item.value().clone());
-            }
-            for item in self.wildcard_child.iter() {
-                current.wildcard_child.insert((), item.value().clone());
-            }
-            for item in self.handler.iter() {
-                current.handler.insert((), item.value().clone());
-            }
-        }
+        let segments: Vec<&str> = path.split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let mut current = self;
 
         for segment in segments {
-            let next_node = if segment.starts_with(':') {
+            current = if segment.starts_with(':') {
                 let param_name = segment[1..].to_string();
-                if !current.param_child.contains_key(&param_name) {
-                    let new_node = Arc::new(TrieNode::new());
-                    current.param_child.insert(param_name.clone(), new_node);
-                }
-                current.param_child.get(&param_name).unwrap().value().clone()
+                let entry = current.param_child.entry(param_name);
+                let node = entry.or_insert_with(|| Arc::new(TrieNode::new()));
+                Arc::as_ref(node)
             } else if segment == "*" {
-                if current.wildcard_child.is_empty() {
-                    let new_node = Arc::new(TrieNode::new());
-                    current.wildcard_child.insert((), new_node);
-                }
-                current.wildcard_child.get(&()).unwrap().value().clone()
+                let entry = current.wildcard_child.entry(());
+                let node = entry.or_insert_with(|| Arc::new(TrieNode::new()));
+                Arc::as_ref(node)
             } else {
-                if !current.children.contains_key(segment) {
-                    let new_node = Arc::new(TrieNode::new());
-                    current.children.insert(segment.to_string(), new_node);
-                }
-                current.children.get(segment).unwrap().value().clone()
+                let entry = current.children.entry(segment.to_string());
+                let node = entry.or_insert_with(|| Arc::new(TrieNode::new()));
+                Arc::as_ref(node)
             };
-            current = next_node;
         }
 
         current.handler.insert((), Arc::new(handler));
@@ -64,7 +45,9 @@ impl TrieNode {
     }
 
     pub fn find(&self, path: &str, params: &mut RouteParams) -> Option<RouteHandler> {
-        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let segments: Vec<&str> = path.split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         self.find_internal(&segments, 0, params)
     }
 
@@ -72,34 +55,33 @@ impl TrieNode {
         if index == segments.len() {
             return self.handler.get(&()).map(|h| {
                 let handler = h.value().clone();
-                Box::new(move |req| (*handler)(req)) as RouteHandler
+                let boxed: Box<dyn Fn(hyper::Request<Body>) -> Pin<Box<dyn Future<Output = Result<Response<Body>, Error>> + Send>> + Send + Sync> = 
+                    Box::new(move |req| handler(req));
+                boxed
             });
         }
 
         let segment = segments[index];
 
         // Try exact match first
-        if let Some(child_ref) = self.children.get(segment) {
-            let child = child_ref.value().clone();
+        if let Some(child) = self.children.get(segment) {
             if let Some(handler) = child.find_internal(segments, index + 1, params) {
                 return Some(handler);
             }
         }
 
         // Try parameter match
-        for param_entry in self.param_child.iter() {
-            let param_name = param_entry.key().clone();
-            let child = param_entry.value().clone();
+        for entry in self.param_child.iter() {
+            let param_name = entry.key().clone();
             params.path_params.insert(param_name.clone(), segment.to_string());
-            if let Some(handler) = child.find_internal(segments, index + 1, params) {
+            if let Some(handler) = entry.value().find_internal(segments, index + 1, params) {
                 return Some(handler);
             }
             params.path_params.remove(&param_name);
         }
 
         // Try wildcard match
-        if let Some(child_ref) = self.wildcard_child.get(&()) {
-            let child = child_ref.value().clone();
+        if let Some(child) = self.wildcard_child.get(&()) {
             return child.find_internal(segments, index + 1, params);
         }
 

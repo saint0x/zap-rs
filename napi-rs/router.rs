@@ -61,8 +61,10 @@ impl Router {
 
         // Find route and extract parameters
         let mut params = RouteParams::new();
-        let handler = self.store.lookup(req.uri().path(), &mut params)
-            .ok_or_else(|| Error::RouteNotFound(req.uri().path().to_string()))?;
+        let handler = match self.store.lookup(req.uri().path(), &mut params)? {
+            Some(h) => h,
+            None => return Err(Error::RouteNotFound(req.uri().path().to_string())),
+        };
 
         // Parse query parameters
         if let Some(query) = req.uri().query() {

@@ -1,22 +1,17 @@
-use futures::future::BoxFuture;
-use hyper::{Body, Request, Response};
+use std::future::Future;
+use std::pin::Pin;
+use hyper::{Request, Response, Body};
 use crate::error::Error;
 
-pub type HookFn = Box<dyn Fn(Request<Body>) -> BoxFuture<'static, Result<Request<Body>, Error>> + Send + Sync>;
-pub type ResponseHookFn = Box<dyn Fn(Response<Body>) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>;
+pub type PreRoutingHook = Box<dyn Fn(Request<Body>) -> Pin<Box<dyn Future<Output = Result<Request<Body>, Error>> + Send>> + Send + Sync>;
+pub type PostHandlerHook = Box<dyn Fn(Response<Body>) -> Pin<Box<dyn Future<Output = Result<Response<Body>, Error>> + Send>> + Send + Sync>;
+pub type ErrorHook = Box<dyn Fn(Error) -> Pin<Box<dyn Future<Output = Result<Response<Body>, Error>> + Send>> + Send + Sync>;
 
 #[derive(Default)]
 pub struct Hooks {
-    // Pre-routing hooks
-    pre_routing: Vec<HookFn>,
-    // Post-routing hooks
-    post_routing: Vec<HookFn>,
-    // Pre-handler hooks
-    pre_handler: Vec<HookFn>,
-    // Post-handler hooks
-    post_handler: Vec<ResponseHookFn>,
-    // Error hooks
-    error_hooks: Vec<Box<dyn Fn(Error) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>>,
+    pre_routing: Vec<PreRoutingHook>,
+    post_handler: Vec<PostHandlerHook>,
+    error_hooks: Vec<ErrorHook>,
 }
 
 impl Hooks {
@@ -24,65 +19,43 @@ impl Hooks {
         Self::default()
     }
 
-    pub fn add_pre_routing(&mut self, hook: HookFn) {
+    pub fn add_pre_routing(&mut self, hook: PreRoutingHook) {
         self.pre_routing.push(hook);
     }
 
-    pub fn add_post_routing(&mut self, hook: HookFn) {
-        self.post_routing.push(hook);
-    }
-
-    pub fn add_pre_handler(&mut self, hook: HookFn) {
-        self.pre_handler.push(hook);
-    }
-
-    pub fn add_post_handler(&mut self, hook: ResponseHookFn) {
+    pub fn add_post_handler(&mut self, hook: PostHandlerHook) {
         self.post_handler.push(hook);
     }
 
-    pub fn add_error_hook(&mut self, hook: Box<dyn Fn(Error) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>) {
+    pub fn add_error_hook(&mut self, hook: ErrorHook) {
         self.error_hooks.push(hook);
     }
 
-    pub async fn execute_pre_routing(&self, req: Request<Body>) -> Result<Request<Body>, Error> {
-        let mut current_req = req;
+    pub async fn execute_pre_routing(&self, mut request: Request<Body>) -> Result<Request<Body>, Error> {
         for hook in &self.pre_routing {
-            current_req = hook(current_req).await?;
+            request = hook(request).await?;
         }
-        Ok(current_req)
+        Ok(request)
     }
 
-    pub async fn execute_post_routing(&self, req: Request<Body>) -> Result<Request<Body>, Error> {
-        let mut current_req = req;
-        for hook in &self.post_routing {
-            current_req = hook(current_req).await?;
-        }
-        Ok(current_req)
-    }
-
-    pub async fn execute_pre_handler(&self, req: Request<Body>) -> Result<Request<Body>, Error> {
-        let mut current_req = req;
-        for hook in &self.pre_handler {
-            current_req = hook(current_req).await?;
-        }
-        Ok(current_req)
-    }
-
-    pub async fn execute_post_handler(&self, res: Response<Body>) -> Result<Response<Body>, Error> {
-        let mut current_res = res;
+    pub async fn execute_post_handler(&self, mut response: Response<Body>) -> Result<Response<Body>, Error> {
         for hook in &self.post_handler {
-            current_res = hook(current_res).await?;
+            response = hook(response).await?;
         }
-        Ok(current_res)
+        Ok(response)
     }
 
-    pub async fn execute_error_hooks(&self, err: Error) -> Result<Response<Body>, Error> {
+    pub async fn execute_error_hooks(&self, error: Error) -> Result<Response<Body>, Error> {
+        // Try each error hook in sequence until one succeeds
         for hook in &self.error_hooks {
-            match hook(err.clone()).await {
+            match hook(error.clone()).await {
                 Ok(response) => return Ok(response),
                 Err(_) => continue,
             }
         }
-        Err(err)
+        // If no hook handles the error, return a default error response
+        let mut response = Response::new(Body::from(format!("Error: {}", error)));
+        *response.status_mut() = error.status_code();
+        Ok(response)
     }
 } 

@@ -1,25 +1,24 @@
-use std::future::Future;
-use std::pin::Pin;
-use hyper::{Body, Request, Response};
+use std::collections::HashMap;
+use crate::handle::Handle;
 
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-pub type RouteHandler = Box<dyn Fn(Request<Body>) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>;
-pub type Middleware = Box<dyn Fn(Request<Body>, Next) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>;
-pub type Next = Box<dyn Fn(Request<Body>) -> BoxFuture<'static, Result<Response<Body>, Error>> + Send + Sync>;
+pub type RouteHandler = Handle;
 
-#[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct RouteParams {
-    pub path_params: dashmap::DashMap<String, String>,
-    pub query_params: dashmap::DashMap<String, String>,
+    pub path_params: HashMap<String, String>,
+    pub query_params: HashMap<String, String>,
 }
 
-impl Default for RouteParams {
-    fn default() -> Self {
-        Self {
-            path_params: dashmap::DashMap::new(),
-            query_params: dashmap::DashMap::new(),
-        }
+impl RouteParams {
+    pub fn new() -> Self {
+        Self::default()
     }
-}
 
-use crate::error::Error; 
+    pub fn get_path_param(&self, name: &str) -> Option<&String> {
+        self.path_params.get(name)
+    }
+
+    pub fn get_query_param(&self, name: &str) -> Option<&String> {
+        self.query_params.get(name)
+    }
+} 

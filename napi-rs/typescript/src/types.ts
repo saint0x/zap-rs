@@ -1,58 +1,141 @@
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-export type StatusCode = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500;
+/**
+ * Core router types
+ */
 
-export interface RequestContext {
+export interface RouterOptions {
+  basePath?: string;
+  caseSensitive?: boolean;
+  strict?: boolean;
+  enableLogging?: boolean;
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  logger?: Logger;
+}
+
+export interface Request {
+  method: string;
+  url: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: unknown;
   params: Record<string, string>;
   query: Record<string, string>;
+  context: RequestContext;
+  ip?: string;
+  user?: Record<string, unknown>;
+}
+
+export interface Response {
+  status: number;
   headers: Record<string, string>;
   body: unknown;
 }
 
-export interface ResponseContext<T = unknown> {
-  status?: StatusCode;
-  headers?: Record<string, string>;
-  body?: T;
+export interface RequestContext {
+  id: string;
+  timestamp: number;
+  metadata: Record<string, unknown>;
+  state: Map<string, unknown>;
 }
 
-export type Middleware = (ctx: RequestContext, next: () => Promise<void>) => Promise<void>;
+export type RouteHandler = (req: Request) => Promise<Response>;
+export type Middleware = (req: Request, next: () => Promise<Response>) => Promise<Response>;
+export type ErrorHandler = (error: Error, req: Request) => Promise<Response>;
 
-export type RouteHandler = (ctx: RequestContext) => Promise<ResponseContext>;
+export interface Hook {
+  phase: 'before' | 'after' | 'error';
+  handler: (req: Request) => Promise<void>;
+}
 
-export type HookPhase = 'pre-routing' | 'post-routing' | 'pre-handler' | 'post-handler';
+/**
+ * Validation types
+ */
+export interface ValidationSchema {
+  type: 'object' | 'array' | 'string' | 'number' | 'boolean';
+  properties?: Record<string, ValidationSchema>;
+  items?: ValidationSchema;
+  required?: string[];
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+}
 
-export type Hook = {
-  phase: HookPhase;
-  handler: (ctx: RequestContext) => Promise<void>;
-};
+export interface ValidationOptions {
+  abortEarly?: boolean;
+  allowUnknown?: boolean;
+  stripUnknown?: boolean;
+}
 
-export type ValidationSchema<T> = {
-  validate: (data: unknown) => T;
-};
+export interface ValidationError extends Error {
+  code: 'VALIDATION_ERROR';
+  details: Array<{
+    path: string[];
+    message: string;
+    type: string;
+  }>;
+}
 
-// Type utilities for route parameters
-export type ExtractRouteParams<T extends string> = string extends T 
-  ? Record<string, string>
-  : T extends `${infer Start}:${infer Param}/${infer Rest}`
-  ? { [K in Param | keyof ExtractRouteParams<Rest>]: string }
-  : T extends `${infer Start}:${infer Param}`
-  ? { [K in Param]: string }
-  : {};
+/**
+ * Error types
+ */
+export interface RouterError extends Error {
+  code: string;
+  statusCode: number;
+  details?: Record<string, unknown>;
+  toResponse(): ErrorResponse;
+}
 
-// Controller metadata types
+export interface ErrorResponse {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+/**
+ * Logging types
+ */
+export interface Logger {
+  debug(message: string, meta?: Record<string, unknown>): void;
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+}
+
+export interface LogEntry {
+  level: LogLevel;
+  message: string;
+  timestamp: number;
+  method?: string;
+  path?: string;
+  status?: number;
+  duration?: number;
+  name?: string;
+  stack?: string;
+  [key: string]: any;
+}
+
+/**
+ * Discovery types
+ */
 export interface ControllerMetadata {
   path: string;
+  routes: RouteMetadata[];
   middlewares: Middleware[];
+  hooks: Hook[];
 }
 
 export interface RouteMetadata {
-  method: HttpMethod;
+  method: string;
   path: string;
+  handler: RouteHandler;
+  validation?: {
+    body?: ValidationSchema;
+    query?: ValidationSchema;
+    params?: ValidationSchema;
+  };
   middlewares: Middleware[];
   hooks: Hook[];
-  validation?: ValidationSchema<unknown>;
-}
-
-// Decorator return types
-export type ClassDecorator = <T extends { new (...args: any[]): {} }>(target: T) => T;
-export type MethodDecorator = (target: any, propertyKey: string, descriptor: PropertyDescriptor) => PropertyDescriptor;
-export type ParameterDecorator = (target: any, propertyKey: string, parameterIndex: number) => void; 
+} 

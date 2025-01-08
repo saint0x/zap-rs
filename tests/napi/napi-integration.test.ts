@@ -1,161 +1,295 @@
 import 'reflect-metadata';
-import { mocks } from './jest.setup';
-import { Zap } from '@zap/zap';
-import { RequestContext, ResponseContext } from '@zap/types';
+import {
+  Router,
+  createRouter,
+  Request,
+  Response,
+  ValidationSchema,
+  RouterError,
+  createLogger,
+  createRequestLogger,
+  createBodyParserMiddleware,
+  createCorsMiddleware,
+  createAuthMiddleware,
+  createRateLimitMiddleware,
+  controller,
+  get,
+  post,
+  use,
+  validate
+} from '@zap';
 
 describe('NAPI Integration', () => {
-  let zap: Zap;
+  let router: Router;
 
   beforeEach(() => {
-    zap = new Zap();
-    // Reset mock implementations
-    jest.clearAllMocks();
-    // Setup default mock implementations
-    mocks.router.handleRequest.mockResolvedValue({ status: 200 });
-    mocks.hooks.addHook.mockImplementation(() => {});
-    mocks.hooks.removeHook.mockImplementation(() => {});
-  });
-
-  describe('Router Integration', () => {
-    it('should handle requests through NAPI router', async () => {
-      // Setup mock response
-      mocks.router.handleRequest.mockResolvedValue({
-        status: 200,
-        body: { message: 'success' }
-      });
-
-      const response = await zap.handleRequest(
-        'GET',
-        '/test',
-        { 'content-type': 'application/json' },
-        { data: 'test' }
-      );
-
-      expect(mocks.router.handleRequest).toHaveBeenCalledWith(
-        'GET',
-        '/test',
-        { 'content-type': 'application/json' },
-        { data: 'test' }
-      );
-      expect(response).toEqual({
-        status: 200,
-        body: { message: 'success' }
-      });
-    });
-
-    it('should handle errors from NAPI router', async () => {
-      const error = new Error('Router error');
-      mocks.router.handleRequest.mockRejectedValue(error);
-
-      await expect(zap.handleRequest('GET', '/test')).rejects.toThrow('Router error');
+    router = createRouter({
+      enableLogging: true,
+      logLevel: 'debug',
     });
   });
 
-  describe('Store Integration', () => {
-    it('should store and retrieve data through NAPI store', async () => {
-      const testData = { key: 'value' };
-      mocks.store.get.mockResolvedValue(testData);
-
-      await zap.store('test-key', testData);
-      const retrieved = await zap.retrieve('test-key');
-
-      expect(mocks.store.set).toHaveBeenCalledWith('test-key', testData);
-      expect(mocks.store.get).toHaveBeenCalledWith('test-key');
-      expect(retrieved).toEqual(testData);
-    });
-
-    it('should handle store operations', async () => {
-      await zap.store('key', 'value');
-      await zap.remove('key');
-      await zap.clearStore();
-
-      expect(mocks.store.set).toHaveBeenCalledWith('key', 'value');
-      expect(mocks.store.delete).toHaveBeenCalledWith('key');
-      expect(mocks.store.clear).toHaveBeenCalled();
-    });
-
-    it('should handle store errors', async () => {
-      const error = new Error('Store error');
-      mocks.store.set.mockRejectedValue(error);
-      await expect(zap.store('key', 'value')).rejects.toThrow('Store error');
-    });
-  });
-
-  describe('Hooks Integration', () => {
-    const testHook = async (ctx: RequestContext) => {
-      ctx.headers['test'] = 'hook';
-    };
-
-    it('should register and remove hooks through NAPI', () => {
-      zap.addHook('pre-routing', testHook);
-      zap.removeHook('pre-routing', testHook);
-
-      expect(mocks.hooks.addHook).toHaveBeenCalledWith('pre-routing', testHook);
-      expect(mocks.hooks.removeHook).toHaveBeenCalledWith('pre-routing', testHook);
-    });
-
-    it('should handle hook errors', () => {
-      // Setup mock to throw error
-      const error = new Error('Hook error');
-      const errorHook = async () => { throw error; };
-      mocks.hooks.addHook.mockImplementation(() => {
-        throw error;
-      });
-
-      expect(() => zap.addHook('pre-routing', errorHook)).toThrow('Hook error');
-    });
-  });
-
-  describe('End-to-End Flow', () => {
-    it('should handle a complete request flow with middleware and hooks', async () => {
-      const flowOrder: string[] = [];
-      
-      // Setup middleware
-      const testMiddleware = async (ctx: RequestContext, next: () => Promise<void>) => {
-        flowOrder.push('middleware');
-        await next();
-      };
-
-      // Setup hooks
-      const preHook = async (ctx: RequestContext) => {
-        flowOrder.push('pre-hook');
-      };
-
-      const postHook = async (ctx: RequestContext) => {
-        flowOrder.push('post-hook');
-      };
-
-      // Setup route handler
-      const handler = async (ctx: RequestContext): Promise<ResponseContext> => {
-        flowOrder.push('handler');
-        return { status: 200 };
-      };
-
-      // Register components
-      mocks.hooks.executeHooks.mockImplementation(async (phase, ctx) => {
-        if (phase === 'pre-handler') {
-          await preHook(ctx);
-        } else if (phase === 'post-handler') {
-          await postHook(ctx);
+  describe('Basic Routing', () => {
+    it('should handle basic routes with controllers', async () => {
+      @controller('/api')
+      class TestController {
+        @get('/hello')
+        async hello() {
+          return { message: 'Hello, World!' };
         }
+
+        @post('/echo')
+        async echo(req: Request) {
+          return req.body;
+        }
+      }
+
+      router.registerController(new TestController());
+
+      const getResponse = await router.handleRequest({
+        method: 'GET',
+        url: '/api/hello',
+        path: '/api/hello',
+        headers: {},
+        params: {},
+        query: {},
+        context: { id: '1', timestamp: Date.now(), metadata: {}, state: new Map() },
       });
 
-      zap.addHook('pre-handler', preHook);
-      zap.addHook('post-handler', postHook);
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.body).toEqual({ message: 'Hello, World!' });
 
-      // Mock route handling
-      mocks.router.handleRequest.mockImplementation(async () => {
-        await mocks.hooks.executeHooks('pre-handler', {});
-        flowOrder.push('handler');
-        await mocks.hooks.executeHooks('post-handler', {});
-        return { status: 200 };
+      const postResponse = await router.handleRequest({
+        method: 'POST',
+        url: '/api/echo',
+        path: '/api/echo',
+        headers: { 'content-type': 'application/json' },
+        body: { test: 'data' },
+        params: {},
+        query: {},
+        context: { id: '2', timestamp: Date.now(), metadata: {}, state: new Map() },
       });
 
-      // Simulate request
-      await zap.handleRequest('GET', '/test');
+      expect(postResponse.status).toBe(200);
+      expect(postResponse.body).toEqual({ test: 'data' });
+    });
+  });
 
-      // Verify flow order
-      expect(flowOrder).toEqual(['pre-hook', 'handler', 'post-hook']);
+  describe('Middleware Integration', () => {
+    it('should apply middleware in correct order', async () => {
+      const order: string[] = [];
+
+      const middleware1 = async (_req: Request, next: () => Promise<Response>) => {
+        order.push('middleware1:before');
+        const response = await next();
+        order.push('middleware1:after');
+        return response;
+      };
+
+      const middleware2 = async (_req: Request, next: () => Promise<Response>) => {
+        order.push('middleware2:before');
+        const response = await next();
+        order.push('middleware2:after');
+        return response;
+      };
+
+      @controller('/api')
+      @use(middleware1)
+      class MiddlewareTestController {
+        @get('/test')
+        @use(middleware2)
+        async test() {
+          order.push('handler');
+          return { message: 'ok' };
+        }
+      }
+
+      router.registerController(new MiddlewareTestController());
+
+      await router.handleRequest({
+        method: 'GET',
+        url: '/api/test',
+        path: '/api/test',
+        headers: {},
+        params: {},
+        query: {},
+        context: { id: '1', timestamp: Date.now(), metadata: {}, state: new Map() },
+      });
+
+      expect(order).toEqual([
+        'middleware1:before',
+        'middleware2:before',
+        'handler',
+        'middleware2:after',
+        'middleware1:after',
+      ]);
+    });
+  });
+
+  describe('Validation Integration', () => {
+    it('should validate request data', async () => {
+      const schema: ValidationSchema = {
+        type: 'object',
+        properties: {
+          name: { type: 'string', minLength: 3 },
+          age: { type: 'number', minimum: 0 },
+        },
+        required: ['name', 'age'],
+      };
+
+      @controller('/api')
+      class ValidationTestController {
+        @post('/user')
+        @validate(schema)
+        async createUser(req: Request) {
+          return req.body;
+        }
+      }
+
+      router.registerController(new ValidationTestController());
+
+      // Valid data
+      const validResponse = await router.handleRequest({
+        method: 'POST',
+        url: '/api/user',
+        path: '/api/user',
+        headers: { 'content-type': 'application/json' },
+        body: { name: 'John', age: 25 },
+        params: {},
+        query: {},
+        context: { id: '1', timestamp: Date.now(), metadata: {}, state: new Map() },
+      });
+
+      expect(validResponse.status).toBe(200);
+      expect(validResponse.body).toEqual({ name: 'John', age: 25 });
+
+      // Invalid data
+      try {
+        await router.handleRequest({
+          method: 'POST',
+          url: '/api/user',
+          path: '/api/user',
+          headers: { 'content-type': 'application/json' },
+          body: { name: 'Jo', age: -1 },
+          params: {},
+          query: {},
+          context: { id: '2', timestamp: Date.now(), metadata: {}, state: new Map() },
+        });
+        fail('Should have thrown validation error');
+      } catch (error) {
+        expect(error instanceof RouterError).toBe(true);
+        expect((error as RouterError).code).toBe('VALIDATION_ERROR');
+      }
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle errors properly', async () => {
+      @controller('/api')
+      class ErrorTestController {
+        @get('/error')
+        async throwError() {
+          throw new Error('Test error');
+        }
+      }
+
+      router.registerController(new ErrorTestController());
+
+      const response = await router.handleRequest({
+        method: 'GET',
+        url: '/api/error',
+        path: '/api/error',
+        headers: {},
+        params: {},
+        query: {},
+        context: { id: '1', timestamp: Date.now(), metadata: {}, state: new Map() },
+      });
+
+      expect(response.status).toBe(500);
+      expect((response.body as any).error).toBeDefined();
+      expect((response.body as any).error.message).toBe('Test error');
+    });
+  });
+
+  describe('Built-in Middleware', () => {
+    it('should work with built-in middleware', async () => {
+      const logger = createLogger();
+      const requestLogger = createRequestLogger(logger);
+      const bodyParser = createBodyParserMiddleware();
+      const cors = createCorsMiddleware({
+        origin: '*',
+        methods: ['GET', 'POST'],
+      });
+      const auth = createAuthMiddleware({
+        authenticate: async (req) => {
+          return req.headers['authorization'] === 'Bearer test';
+        },
+      });
+      const rateLimit = createRateLimitMiddleware({
+        windowMs: 1000,
+        max: 2,
+      });
+
+      router.use(requestLogger);
+      router.use(bodyParser);
+      router.use(cors);
+      router.use(auth);
+      router.use(rateLimit);
+
+      @controller('/api')
+      class MiddlewareTestController {
+        @get('/test')
+        async test() {
+          return { message: 'success' };
+        }
+      }
+
+      router.registerController(new MiddlewareTestController());
+
+      // Test CORS
+      const corsResponse = await router.handleRequest({
+        method: 'OPTIONS',
+        url: '/api/test',
+        path: '/api/test',
+        headers: {},
+        params: {},
+        query: {},
+        context: { id: '1', timestamp: Date.now(), metadata: {}, state: new Map() },
+      });
+
+      expect(corsResponse.status).toBe(204);
+      expect(corsResponse.headers['Access-Control-Allow-Origin']).toBe('*');
+
+      // Test Auth
+      try {
+        await router.handleRequest({
+          method: 'GET',
+          url: '/api/test',
+          path: '/api/test',
+          headers: {},
+          params: {},
+          query: {},
+          context: { id: '2', timestamp: Date.now(), metadata: {}, state: new Map() },
+        });
+        fail('Should have thrown auth error');
+      } catch (error) {
+        expect(error instanceof RouterError).toBe(true);
+        expect((error as RouterError).code).toBe('UNAUTHORIZED');
+      }
+
+      // Test successful request
+      const response = await router.handleRequest({
+        method: 'GET',
+        url: '/api/test',
+        path: '/api/test',
+        headers: { 'authorization': 'Bearer test' },
+        params: {},
+        query: {},
+        context: { id: '3', timestamp: Date.now(), metadata: {}, state: new Map() },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'success' });
     });
   });
 }); 

@@ -2,20 +2,20 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>'],
+  moduleNameMapper: {
+    '^@zap$': '<rootDir>/../../napi-rs/typescript/src/index.ts',
+    '^@zap/(.*)$': '<rootDir>/../../napi-rs/typescript/src/$1'
+  },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-  testMatch: ['<rootDir>/**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'js'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      tsconfig: '<rootDir>/tsconfig.json',
-      compiler: 'typescript',
-      isolatedModules: true,
-      diagnostics: {
-        ignoreCodes: [151001]
-      }
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: '<rootDir>/tsconfig.json'
     }]
   },
-  moduleNameMapper: {
-    '^@zap/(.*)$': '<rootDir>/../../napi-rs/typescript/src/$1'
-  }
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
+  collectCoverage: true,
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov'],
+  verbose: true
 }; 

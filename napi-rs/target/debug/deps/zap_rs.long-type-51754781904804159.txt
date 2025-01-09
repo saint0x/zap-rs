@@ -1,0 +1,1 @@
+std::result::Result<hyper::Request<Body>, napi::Error<error::ZapError>>

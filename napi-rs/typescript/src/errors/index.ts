@@ -1,16 +1,15 @@
-import { RouterError, ErrorResponse, Request, Response } from '../types';
+import { ErrorResponse, Request, Response } from '../types';
 
-export class RouterErrorImpl extends Error implements RouterError {
-  code: string;
-  statusCode: number;
-  details?: Record<string, unknown>;
-
-  constructor(code: string, message: string, statusCode: number = 500, details?: Record<string, unknown>) {
+export class RouterError extends Error {
+  constructor(
+    public code: string,
+    public statusCode: number,
+    message: string,
+    public details?: Record<string, unknown>
+  ) {
     super(message);
     this.name = 'RouterError';
-    this.code = code;
-    this.statusCode = statusCode;
-    this.details = details;
+    Object.setPrototypeOf(this, RouterError.prototype);
   }
 
   toResponse(): ErrorResponse {
@@ -24,44 +23,93 @@ export class RouterErrorImpl extends Error implements RouterError {
   }
 }
 
-export class ValidationError extends RouterErrorImpl {
+export class ValidationError extends RouterError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super('VALIDATION_ERROR', message, 400, details);
+    super('VALIDATION_ERROR', 400, message, details);
+    this.name = 'ValidationError';
+    Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
 
-export class NotFoundError extends RouterErrorImpl {
-  constructor(message: string = 'Resource not found') {
-    super('NOT_FOUND', message, 404);
+export class NotFoundError extends RouterError {
+  constructor(path: string) {
+    super('NOT_FOUND', 404, `Route not found: ${path}`);
+    this.name = 'NotFoundError';
+    Object.setPrototypeOf(this, NotFoundError.prototype);
   }
 }
 
-export class UnauthorizedError extends RouterErrorImpl {
+export class UnauthorizedError extends RouterError {
   constructor(message: string = 'Unauthorized') {
-    super('UNAUTHORIZED', message, 401);
+    super('UNAUTHORIZED', 401, message);
+    this.name = 'UnauthorizedError';
+    Object.setPrototypeOf(this, UnauthorizedError.prototype);
   }
 }
 
-export class ForbiddenError extends RouterErrorImpl {
+export class ForbiddenError extends RouterError {
   constructor(message: string = 'Forbidden') {
-    super('FORBIDDEN', message, 403);
+    super('FORBIDDEN', 403, message);
+    this.name = 'ForbiddenError';
+    Object.setPrototypeOf(this, ForbiddenError.prototype);
   }
 }
 
-export class InternalError extends RouterErrorImpl {
-  constructor(message: string = 'Internal server error') {
-    super('INTERNAL_ERROR', message, 500);
-  }
-}
-
-export class BadRequestError extends RouterErrorImpl {
+export class BadRequestError extends RouterError {
   constructor(message: string = 'Bad request') {
-    super('BAD_REQUEST', message, 400);
+    super('BAD_REQUEST', 400, message);
+    this.name = 'BadRequestError';
+    Object.setPrototypeOf(this, BadRequestError.prototype);
   }
+}
+
+export class InternalError extends RouterError {
+  constructor(message: string = 'Internal server error') {
+    super('INTERNAL_ERROR', 500, message);
+    this.name = 'InternalError';
+    Object.setPrototypeOf(this, InternalError.prototype);
+  }
+}
+
+export class MethodNotAllowedError extends RouterError {
+  constructor(method: string, path: string) {
+    super('METHOD_NOT_ALLOWED', 405, `Method ${method} not allowed for path: ${path}`);
+    this.name = 'MethodNotAllowedError';
+    Object.setPrototypeOf(this, MethodNotAllowedError.prototype);
+  }
+}
+
+// Error utility functions
+export function createError(code: string, message: string, statusCode?: number, details?: Record<string, unknown>): RouterError {
+  return new RouterError(code, statusCode || 500, message, details);
+}
+
+export function createValidationError(message: string, details?: Record<string, unknown>): RouterError {
+  return new ValidationError(message, details);
+}
+
+export function createNotFoundError(path: string): RouterError {
+  return new NotFoundError(path);
+}
+
+export function createUnauthorizedError(message?: string): RouterError {
+  return new UnauthorizedError(message);
+}
+
+export function createForbiddenError(message?: string): RouterError {
+  return new ForbiddenError(message);
+}
+
+export function createInternalError(message?: string): RouterError {
+  return new InternalError(message);
+}
+
+export function createBadRequestError(message?: string): RouterError {
+  return new BadRequestError(message);
 }
 
 export function isRouterError(error: unknown): error is RouterError {
-  return error instanceof RouterErrorImpl;
+  return error instanceof RouterError;
 }
 
 export function createErrorHandler(options: {
@@ -107,35 +155,4 @@ export function createErrorMiddleware(options: {
       throw error;
     }
   };
-}
-
-// Error utility functions
-export function createError(code: string, message: string, statusCode?: number, details?: Record<string, unknown>): RouterError {
-  return new RouterErrorImpl(code, message, statusCode, details);
-}
-
-export function createValidationError(message: string, details?: Record<string, unknown>): RouterError {
-  return new ValidationError(message, details);
-}
-
-export function createNotFoundError(message?: string): RouterError {
-  return new NotFoundError(message);
-}
-
-export function createUnauthorizedError(message?: string): RouterError {
-  return new UnauthorizedError(message);
-}
-
-export function createForbiddenError(message?: string): RouterError {
-  return new ForbiddenError(message);
-}
-
-export function createInternalError(message?: string): RouterError {
-  return new InternalError(message);
-}
-
-export function createBadRequestError(message?: string): RouterError {
-  return new BadRequestError(message);
-}
-
-export { RouterErrorImpl as RouterError }; 
+} 

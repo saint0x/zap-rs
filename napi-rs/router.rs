@@ -61,10 +61,8 @@ impl Router {
 
         // Find route and extract parameters
         let mut params = RouteParams::new();
-        let handler = match self.store.lookup(req.uri().path(), &mut params)? {
-            Some(h) => h,
-            None => return Err(Error::RouteNotFound(req.uri().path().to_string())),
-        };
+        let handler = self.store.lookup(req.uri().path(), &mut params)
+            .ok_or_else(|| Error::RouteNotFound(req.uri().path().to_string()))?;
 
         // Parse query parameters
         if let Some(query) = req.uri().query() {
@@ -78,7 +76,7 @@ impl Router {
         // Wrap the handler with middleware if present
         let response = if let Some(middleware) = &self.middleware {
             let handler = Arc::new(move |req| handler.call(req));
-            let chain = middleware.compose(handler);
+            let chain = middleware.clone().compose(handler);
             chain(req).await
         } else {
             handler.call(req).await

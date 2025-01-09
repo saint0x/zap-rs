@@ -1,6 +1,29 @@
 // Core exports
-export { Router, createRouter } from './router';
-export { Request, Response, RouterOptions, RouteHandler, Middleware, Hook } from './types';
+export { Zap } from './zap';
+export { createRouter, createStore, createHooks } from './bindings';
+export { Server } from './server';
+
+// Type exports
+export type {
+  Request,
+  Response,
+  RouterOptions,
+  RouteHandler,
+  Middleware,
+  Hook,
+  ValidationSchema,
+  ValidationOptions,
+  Logger,
+  LoggerOptions,
+  LogLevel,
+  LogEntry,
+  CorsOptions,
+  Router
+} from './types';
+
+// Error exports
+export { ValidationError } from './types';
+export type { RouterError } from './types';
 
 // Decorator exports
 export {
@@ -17,86 +40,29 @@ export {
   param,
   query,
   body,
-  header,
-  validate,
-  catchError,
-  cache,
-  rateLimit,
+  validate
 } from './decorators';
 
-// Error handling exports
+// Validation exports
 export {
-  RouterError,
-  ValidationError,
-  NotFoundError,
-  UnauthorizedError,
-  ForbiddenError,
-  InternalError,
-  BadRequestError,
-  createError,
-  createValidationError,
-  createNotFoundError,
-  createUnauthorizedError,
-  createForbiddenError,
-  createInternalError,
-  createBadRequestError,
-  isRouterError,
-  createErrorHandler,
-  createErrorMiddleware,
-} from './errors';
+  validateQuery,
+  validateParams
+} from './validation/decorators';
 
 // Middleware exports
 export {
-  MiddlewareChain,
-  createMiddlewareChain,
   createCorsMiddleware,
   createBodyParserMiddleware,
   createAuthMiddleware,
   createRateLimitMiddleware,
-  createHookMiddleware,
-  createValidationMiddleware,
-  createCacheMiddleware,
+  createValidationMiddleware
 } from './middleware';
-
-// Validation exports
-export {
-  Validator,
-  createValidator,
-  ValidationSchema,
-  ValidationOptions,
-  ValidationError as ValidationSchemaError,
-} from './validation';
-
-// Discovery exports
-export {
-  ControllerDiscovery,
-  ControllerInfo,
-  RouteInfo,
-  createControllerDiscovery,
-  getControllerMetadata,
-  getRouteMetadata,
-  getParamMetadata,
-  getValidationMetadata,
-  getMiddlewareMetadata,
-  getHookMetadata,
-  normalizePath,
-  matchPath,
-  extractPathParams,
-  scanControllers,
-} from './discovery';
 
 // Logging exports
 export {
-  Logger,
-  LogLevel,
-  LoggerOptions,
-  RouterLogger,
   createLogger,
-  createRequestLogger,
-  createErrorLogger,
-  createAccessLogger,
-  createErrorLoggerWithFormat,
+  createRequestLogger
 } from './logging';
 
-// Re-export reflect-metadata for convenience
-export { default as reflectMetadata } from 'reflect-metadata'; 
+// Version export
+export const VERSION = '1.0.0'; 

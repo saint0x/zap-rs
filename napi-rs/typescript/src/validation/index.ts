@@ -1,4 +1,5 @@
-import { Request, Response, Middleware, RouterError } from '../types';
+import { Request, Response, Middleware } from '../types';
+import { ValidationError } from '../errors';
 
 export type ValidationSchemaType = 'string' | 'number' | 'boolean' | 'object' | 'array';
 
@@ -26,30 +27,6 @@ export interface ValidationErrorDetails {
   type: string;
 }
 
-export class ValidationError extends Error {
-  code: string = 'VALIDATION_ERROR';
-  statusCode: number = 400;
-  details: Record<string, unknown>;
-
-  constructor(message: string, details: ValidationErrorDetails[] = []) {
-    super(message);
-    this.name = 'ValidationError';
-    this.details = { errors: details };
-  }
-
-  toResponse() {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-        details: this.details,
-      },
-    };
-  }
-}
-
-Object.setPrototypeOf(ValidationError.prototype, RouterError.prototype);
-
 export class Validator {
   constructor(private schema: ValidationSchema, private options: ValidationOptions = {}) {
     this.options = {
@@ -65,7 +42,7 @@ export class Validator {
     const result = await this.validateNode(data, this.schema, [], errors);
 
     if (errors.length > 0) {
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError('Validation failed', { errors });
     }
 
     return result;
@@ -84,7 +61,7 @@ export class Validator {
         type: 'type',
       });
       if (this.options.abortEarly) {
-        return data;
+        throw new ValidationError('Validation failed', { errors });
       }
     }
 
@@ -101,7 +78,7 @@ export class Validator {
               type: 'required',
             });
             if (this.options.abortEarly) {
-              return data;
+              throw new ValidationError('Validation failed', { errors });
             }
           }
         }
@@ -150,7 +127,7 @@ export class Validator {
           type: 'string.minLength',
         });
         if (this.options.abortEarly) {
-          return data;
+          throw new ValidationError('Validation failed', { errors });
         }
       }
 
@@ -161,7 +138,7 @@ export class Validator {
           type: 'string.maxLength',
         });
         if (this.options.abortEarly) {
-          return data;
+          throw new ValidationError('Validation failed', { errors });
         }
       }
 
@@ -172,7 +149,7 @@ export class Validator {
           type: 'string.pattern',
         });
         if (this.options.abortEarly) {
-          return data;
+          throw new ValidationError('Validation failed', { errors });
         }
       }
     }
@@ -186,7 +163,7 @@ export class Validator {
           type: 'number.minimum',
         });
         if (this.options.abortEarly) {
-          return data;
+          throw new ValidationError('Validation failed', { errors });
         }
       }
 
@@ -197,7 +174,7 @@ export class Validator {
           type: 'number.maximum',
         });
         if (this.options.abortEarly) {
-          return data;
+          throw new ValidationError('Validation failed', { errors });
         }
       }
     }
@@ -230,14 +207,30 @@ export function createValidator(schema: ValidationSchema, options?: ValidationOp
 export function createValidationMiddleware(schema: ValidationSchema): Middleware {
   const validator = new Validator(schema);
   return async (req: Request, next: () => Promise<Response>) => {
-    try {
-      await validator.validate(req.body);
-      return next();
-    } catch (error) {
-      if (error instanceof ValidationError) {
-        throw error;
+    if (req.body) {
+      try {
+        const validatedBody = await validator.validate(req.body);
+        if (typeof validatedBody === 'string') {
+          req.body = validatedBody;
+        } else if (validatedBody && typeof validatedBody === 'object') {
+          req.body = validatedBody as Record<string, unknown>;
+        } else {
+          throw new ValidationError('Invalid request body type');
+        }
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          throw error;
+        }
+        // Convert any other error to a ValidationError
+        throw new ValidationError('Validation failed', {
+          errors: [{
+            path: [],
+            message: error instanceof Error ? error.message : String(error),
+            type: 'validation',
+          }]
+        });
       }
-      throw error;
     }
+    return next();
   };
 } 

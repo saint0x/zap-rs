@@ -1,33 +1,151 @@
-import { Request, Response, RouterOptions, Middleware, Hook } from './types';
-import { RouterError, createNotFoundError, createInternalError } from './errors';
-import { MiddlewareChain, createMiddlewareChain } from './middleware';
-import { ControllerDiscovery } from './discovery';
-import { Logger, createLogger } from './logging';
+import { Router as IRouter, Request, Response, Middleware, RouterOptions, Logger, RouteMetadata, RouteHandler, Hook, LogLevel, ZapError } from './types';
+import { createMiddlewareChain, MiddlewareChain } from './middleware';
+import { createLogger } from './logging';
+import { getControllerMetadata, getRouteMetadata, getMiddlewareMetadata } from './metadata';
+import { RouterError, createNotFoundError } from './errors';
 
-export class Router {
-  private discovery: ControllerDiscovery;
+export class Router implements IRouter {
   private middlewareChain: MiddlewareChain;
+  private controllers: Map<string, object>;
   private logger: Logger;
-  private hooks: Hook[] = [];
 
   constructor(options: RouterOptions = {}) {
-    this.discovery = new ControllerDiscovery();
     this.middlewareChain = createMiddlewareChain();
+    this.controllers = new Map();
     this.logger = options.logger || createLogger();
-    this.setupErrorHandler();
+
+    if (options.enableLogging) {
+      this.use(async (req, next) => {
+        const start = Date.now();
+        try {
+          const response = await next();
+          this.logger.info('Request completed', {
+            method: req.method,
+            path: req.url,
+            status: response.status,
+            duration: Date.now() - start,
+          });
+          return response;
+        } catch (error) {
+          this.logger.error('Request failed', {
+            method: req.method,
+            path: req.url,
+            error: error instanceof Error ? error.message : String(error),
+            duration: Date.now() - start,
+          });
+          throw error;
+        }
+      });
+    }
   }
 
-  private setupErrorHandler(): void {
-    this.middlewareChain.setErrorHandler(async (error: Error, req: Request) => {
-      await this.executeHooks('error', req);
-      
-      this.logger.error('Router error', {
-        error: error.message,
-        stack: error.stack,
-        path: req.path,
-        method: req.method,
+  handle(request: Request): Promise<Response> {
+    return this.handleRequest(request);
+  }
+
+  use(middleware: Middleware): void {
+    this.middlewareChain.add(middleware);
+  }
+
+  useMiddleware(middleware: Middleware): void {
+    this.use(middleware);
+  }
+
+  useHook(hook: Hook): void {
+    if (hook.phase === 'before' || hook.phase === 'after') {
+      this.use(async (req, next) => {
+        if (hook.phase === 'before') await hook.handler(req);
+        const response = await next();
+        if (hook.phase === 'after') await hook.handler(req);
+        return response;
+      });
+    }
+  }
+
+  get(path: string, handler: RouteHandler): void {
+    this.addRoute('GET', path, handler);
+  }
+
+  post(path: string, handler: RouteHandler): void {
+    this.addRoute('POST', path, handler);
+  }
+
+  put(path: string, handler: RouteHandler): void {
+    this.addRoute('PUT', path, handler);
+  }
+
+  delete(path: string, handler: RouteHandler): void {
+    this.addRoute('DELETE', path, handler);
+  }
+
+  patch(path: string, handler: RouteHandler): void {
+    this.addRoute('PATCH', path, handler);
+  }
+
+  options(path: string, handler: RouteHandler): void {
+    this.addRoute('OPTIONS', path, handler);
+  }
+
+  head(path: string, handler: RouteHandler): void {
+    this.addRoute('HEAD', path, handler);
+  }
+
+  setErrorHandler(handler: (error: ZapError) => Promise<Response>): void {
+    this.middlewareChain.add(async (req, next) => {
+      try {
+        return await next();
+      } catch (error) {
+        const zapError: ZapError = error instanceof Error ? {
+          code: 'INTERNAL_ERROR',
+          message: error.message,
+          details: { stack: error.stack }
+        } : {
+          code: 'UNKNOWN_ERROR',
+          message: String(error),
+          details: { error }
+        };
+        return handler(zapError);
+      }
+    });
+  }
+
+  setLogger(logger: (level: string, message: string) => void): void {
+    this.logger = {
+      debug: (msg: string) => logger('debug', msg),
+      info: (msg: string) => logger('info', msg),
+      warn: (msg: string) => logger('warn', msg),
+      error: (msg: string) => logger('error', msg),
+    };
+  }
+
+  registerController(controller: object): void {
+    const metadata = getControllerMetadata(controller);
+    if (!metadata || typeof metadata !== 'object' || !('path' in metadata)) {
+      throw new Error('Invalid controller: missing metadata');
+    }
+
+    const path = metadata.path as string;
+    this.controllers.set(path, controller);
+  }
+
+  async handleRequest(req: Request): Promise<Response> {
+    try {
+      const response = await this.middlewareChain.execute(req, async () => {
+        const controller = this.findController(req.url);
+        if (!controller) {
+          throw createNotFoundError(`No route found for ${req.method} ${req.url}`);
+        }
+
+        const handler = this.findHandler(controller, req);
+        if (!handler) {
+          throw createNotFoundError(`No handler found for ${req.method} ${req.url}`);
+        }
+
+        return handler(req);
       });
 
+      return response;
+    } catch (error) {
       if (error instanceof RouterError) {
         return {
           status: error.statusCode,
@@ -36,63 +154,95 @@ export class Router {
         };
       }
 
-      const internalError = createInternalError(error.message);
       return {
-        status: internalError.statusCode,
+        status: 500,
         headers: { 'Content-Type': 'application/json' },
-        body: internalError.toResponse(),
+        body: {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            code: 'INTERNAL_ERROR',
+          },
+        },
       };
-    });
+    }
   }
 
-  use(middleware: Middleware): void {
-    this.middlewareChain.use(middleware);
+  private findController(path: string): object | null {
+    for (const [prefix, controller] of this.controllers) {
+      if (path.startsWith(prefix)) {
+        return controller;
+      }
+    }
+    return null;
   }
 
-  registerController(controller: any): void {
-    this.discovery.registerController(controller, '');
-  }
-
-  async handleRequest(req: Request): Promise<Response> {
-    const route = this.discovery.findRoute(req.method, req.path);
-    if (!route) {
-      throw createNotFoundError(`No route found for ${req.method} ${req.path}`);
+  private findHandler(controller: object, req: Request): RouteHandler | null {
+    const metadata = getControllerMetadata(controller);
+    if (!metadata || typeof metadata !== 'object' || !('path' in metadata)) {
+      return null;
     }
 
-    return this.middlewareChain.execute(req, async () => {
-      try {
-        await this.executeHooks('before', req);
-        const result = await route.handler(req);
-        await this.executeHooks('after', req);
+    const routes = getRouteMetadata(controller, 'route');
+    if (!Array.isArray(routes)) {
+      return null;
+    }
 
+    for (const route of routes) {
+      if (!this.isValidRouteMetadata(route)) continue;
+      
+      const fullPath = `${metadata.path}${route.path}`;
+      if (req.url === fullPath && req.method === route.method) {
+        return this.createHandler(controller, route);
+      }
+    }
+
+    return null;
+  }
+
+  private isValidRouteMetadata(route: unknown): route is RouteMetadata {
+    return (
+      typeof route === 'object' &&
+      route !== null &&
+      'path' in route &&
+      'method' in route &&
+      typeof route.path === 'string' &&
+      typeof route.method === 'string'
+    );
+  }
+
+  private createHandler(controller: object, route: RouteMetadata): RouteHandler {
+    return async (req: Request): Promise<Response> => {
+      const middlewares = getMiddlewareMetadata(controller, route.method);
+      if (Array.isArray(middlewares)) {
+        const chain = createMiddlewareChain(middlewares as Middleware[]);
+        return chain.execute(req, () => this.executeHandler(controller, route.method, req));
+      }
+      return this.executeHandler(controller, route.method, req);
+    };
+  }
+
+  private async executeHandler(controller: object, method: string, req: Request): Promise<Response> {
+    if (typeof controller === 'object' && controller !== null && method in controller) {
+      const handler = (controller as Record<string, unknown>)[method];
+      if (typeof handler === 'function') {
+        const result = await handler.call(controller, req);
         return {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
           body: result,
         };
-      } catch (error) {
-        await this.executeHooks('error', req);
-        if (error instanceof RouterError) {
-          throw error;
-        }
-        throw createInternalError(error instanceof Error ? error.message : String(error));
-      }
-    });
-  }
-
-  private async executeHooks(phase: 'before' | 'after' | 'error', req: Request): Promise<void> {
-    for (const hook of this.hooks) {
-      if (hook.phase === phase) {
-        try {
-          await hook.handler(req);
-        } catch (error) {
-          this.logger.error(`Hook error in ${phase} phase`, {
-            error: error instanceof Error ? error.message : String(error),
-            phase,
-          });
-        }
       }
     }
+    throw new Error(`Method ${method} not found on controller`);
+  }
+
+  private addRoute(method: string, path: string, handler: RouteHandler): void {
+    const route = {
+      method,
+      path,
+      handler,
+    };
+    this.controllers.set(path, { [method]: handler });
   }
 }
 

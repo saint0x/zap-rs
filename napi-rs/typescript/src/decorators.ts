@@ -1,183 +1,127 @@
 import 'reflect-metadata';
-import { ControllerMetadata, RouteMetadata, Middleware, Hook, ValidationSchema, Request, RouteHandler } from './types';
+import { Request, Response, RouteHandler, Middleware, Hook, ValidationSchema } from './types';
 
-// Controller decorator
-export function controller(path: string = '/'): ClassDecorator {
-  return (target: any) => {
-    const metadata: ControllerMetadata = {
-      path,
-      middlewares: [],
-      hooks: [],
-      routes: []
-    };
-    Reflect.defineMetadata('controller', metadata, target);
+export function controller(path: string): ClassDecorator {
+  return (target: Function) => {
+    Reflect.defineMetadata('controller', { path }, target);
+  };
+}
+
+export function route(method: string, path: string): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    Reflect.defineMetadata('route', { method, path }, target, propertyKey.toString());
+    return descriptor;
   };
 }
 
 // HTTP method decorators
-function createMethodDecorator(method: string) {
-  return (path: string = '/'): MethodDecorator => {
-    return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-      const metadata: RouteMetadata = {
-        path,
-        method,
-        middlewares: Reflect.getMetadata('middleware', target, propertyKey as string) || [],
-        hooks: Reflect.getMetadata('hooks', target, propertyKey as string) || [],
-        validation: Reflect.getMetadata('validation', target, propertyKey as string),
-        handler: descriptor.value as RouteHandler
-      };
-      Reflect.defineMetadata('route', metadata, target, propertyKey as string);
-    };
+export function get(path: string): MethodDecorator {
+  return route('GET', path);
+}
+
+export function post(path: string): MethodDecorator {
+  return route('POST', path);
+}
+
+export function put(path: string): MethodDecorator {
+  return route('PUT', path);
+}
+
+export function del(path: string): MethodDecorator {
+  return route('DELETE', path);
+}
+
+export function patch(path: string): MethodDecorator {
+  return route('PATCH', path);
+}
+
+export function options(path: string): MethodDecorator {
+  return route('OPTIONS', path);
+}
+
+export function head(path: string): MethodDecorator {
+  return route('HEAD', path);
+}
+
+// Middleware decorators
+export function useMiddleware(middleware: Middleware | Middleware[]): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    const middlewares = Array.isArray(middleware) ? middleware : [middleware];
+    const existingMiddleware = Reflect.getMetadata('middleware', target, propertyKey.toString()) || [];
+    Reflect.defineMetadata('middleware', [...existingMiddleware, ...middlewares], target, propertyKey.toString());
+    return descriptor;
   };
 }
 
-export const get = createMethodDecorator('GET');
-export const post = createMethodDecorator('POST');
-export const put = createMethodDecorator('PUT');
-export const del = createMethodDecorator('DELETE');
-export const patch = createMethodDecorator('PATCH');
-export const options = createMethodDecorator('OPTIONS');
-export const head = createMethodDecorator('HEAD');
-
-// Middleware decorator
-export function use(middleware: Middleware): ClassDecorator & MethodDecorator {
-  return (target: any, propertyKey?: string | symbol, descriptor?: PropertyDescriptor) => {
-    if (propertyKey && descriptor) {
-      // Method decorator
-      const middlewares = Reflect.getMetadata('middleware', target, propertyKey as string) || [];
-      middlewares.push(middleware);
-      Reflect.defineMetadata('middleware', middlewares, target, propertyKey as string);
-    } else {
-      // Class decorator
-      const middlewares = Reflect.getMetadata('middleware', target) || [];
-      middlewares.push(middleware);
-      Reflect.defineMetadata('middleware', middlewares, target);
-    }
+export function useClass(middleware: Middleware | Middleware[]): ClassDecorator {
+  return (target: Function) => {
+    const middlewares = Array.isArray(middleware) ? middleware : [middleware];
+    const existingMiddleware = Reflect.getMetadata('middleware', target) || [];
+    Reflect.defineMetadata('middleware', [...existingMiddleware, ...middlewares], target);
   };
 }
 
-// Hook decorator
-export function hook(phase: Hook['phase']): MethodDecorator {
-  return (_target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const hooks = Reflect.getMetadata('hooks', _target, propertyKey as string) || [];
-    hooks.push({
-      phase,
-      handler: descriptor.value as (req: Request) => Promise<void>
-    });
-    Reflect.defineMetadata('hooks', hooks, _target, propertyKey as string);
+// Hook decorators
+export function hookMethod(hook: Hook): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    const existingHooks = Reflect.getMetadata('hooks', target, propertyKey.toString()) || [];
+    Reflect.defineMetadata('hooks', [...existingHooks, hook], target, propertyKey.toString());
+    return descriptor;
+  };
+}
+
+export function hookClass(hook: Hook): ClassDecorator {
+  return (target: Function) => {
+    const existingHooks = Reflect.getMetadata('hooks', target) || [];
+    Reflect.defineMetadata('hooks', [...existingHooks, hook], target);
   };
 }
 
 // Parameter decorators
 export function param(name: string): ParameterDecorator {
-  return (_target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number): void => {
     if (propertyKey === undefined) return;
-    const params = Reflect.getMetadata('params', _target, propertyKey as string) || [];
+    const params = Reflect.getMetadata('params', target, propertyKey.toString()) || [];
     params[parameterIndex] = { type: 'param', name };
-    Reflect.defineMetadata('params', params, _target, propertyKey as string);
+    Reflect.defineMetadata('params', params, target, propertyKey.toString());
   };
 }
 
 export function query(name: string): ParameterDecorator {
-  return (_target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number): void => {
     if (propertyKey === undefined) return;
-    const params = Reflect.getMetadata('params', _target, propertyKey as string) || [];
+    const params = Reflect.getMetadata('params', target, propertyKey.toString()) || [];
     params[parameterIndex] = { type: 'query', name };
-    Reflect.defineMetadata('params', params, _target, propertyKey as string);
+    Reflect.defineMetadata('params', params, target, propertyKey.toString());
   };
 }
 
 export function body(): ParameterDecorator {
-  return (_target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number): void => {
     if (propertyKey === undefined) return;
-    const params = Reflect.getMetadata('params', _target, propertyKey as string) || [];
+    const params = Reflect.getMetadata('params', target, propertyKey.toString()) || [];
     params[parameterIndex] = { type: 'body' };
-    Reflect.defineMetadata('params', params, _target, propertyKey as string);
+    Reflect.defineMetadata('params', params, target, propertyKey.toString());
   };
 }
 
 export function header(name: string): ParameterDecorator {
-  return (_target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number): void => {
     if (propertyKey === undefined) return;
-    const params = Reflect.getMetadata('params', _target, propertyKey as string) || [];
+    const params = Reflect.getMetadata('params', target, propertyKey.toString()) || [];
     params[parameterIndex] = { type: 'header', name };
-    Reflect.defineMetadata('params', params, _target, propertyKey as string);
+    Reflect.defineMetadata('params', params, target, propertyKey.toString());
   };
 }
 
 // Validation decorator
 export function validate(schema: ValidationSchema): MethodDecorator {
-  return (_target: any, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    Reflect.defineMetadata('validation', { body: schema }, _target, propertyKey as string);
-  };
-}
-
-// Error handling decorator
-export function catchError(errorType: new (...args: any[]) => Error): MethodDecorator {
-  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const originalMethod = descriptor.value;
-    descriptor.value = async function (...args: any[]) {
-      try {
-        return await originalMethod.apply(this, args);
-      } catch (error) {
-        if (error instanceof errorType) {
-          throw error;
-        }
-        throw error;
-      }
-    };
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    Reflect.defineMetadata('validation', { schema }, target, propertyKey.toString());
     return descriptor;
   };
 }
 
-// Cache decorator
-export function cache(ttl: number = 60000): MethodDecorator {
-  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const originalMethod = descriptor.value;
-    const cacheStore = new Map<string, { value: any; expires: number }>();
-
-    descriptor.value = async function(...args: any[]) {
-      const key = JSON.stringify(args);
-      const now = Date.now();
-      const cached = cacheStore.get(key);
-
-      if (cached && cached.expires > now) {
-        return cached.value;
-      }
-
-      const result = await originalMethod.apply(this, args);
-      cacheStore.set(key, { value: result, expires: now + ttl });
-      return result;
-    };
-    return descriptor;
-  };
-}
-
-// Rate limit decorator
-export function rateLimit(options: { windowMs?: number; max?: number } = {}): MethodDecorator {
-  const { windowMs = 60000, max = 100 } = options;
-  const hits = new Map<string, { count: number; resetTime: number }>();
-
-  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const originalMethod = descriptor.value;
-
-    descriptor.value = async function(req: Request, ...args: any[]) {
-      const key = req.ip || 'unknown';
-      const now = Date.now();
-      
-      let record = hits.get(key);
-      if (!record || now > record.resetTime) {
-        record = { count: 0, resetTime: now + windowMs };
-        hits.set(key, record);
-      }
-      
-      record.count++;
-      if (record.count > max) {
-        throw new Error('Too many requests');
-      }
-      
-      return originalMethod.apply(this, [req, ...args]);
-    };
-    return descriptor;
-  };
-} 
+// Aliases for backward compatibility
+export const use = useClass;
+export const hook = hookMethod; 

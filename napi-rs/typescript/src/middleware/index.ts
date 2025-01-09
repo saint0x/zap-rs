@@ -1,4 +1,4 @@
-import { Middleware, Request, Response, Hook } from '../types';
+import { Middleware, Request, Response, Hook, CorsOptions } from '../types';
 import { RouterError, createInternalError } from '../errors';
 
 export type NextFunction = () => Promise<Response>;
@@ -11,87 +11,58 @@ export interface MiddlewareContext {
 
 export class MiddlewareChain {
   private middlewares: Middleware[] = [];
-  private errorHandler?: ErrorHandler;
 
-  use(middleware: Middleware): void {
+  add(middleware: Middleware): void {
     this.middlewares.push(middleware);
   }
 
-  setErrorHandler(handler: ErrorHandler): void {
-    this.errorHandler = handler;
-  }
-
-  async execute(req: Request, finalHandler: () => Promise<Response>): Promise<Response> {
+  async execute(req: Request, handler: () => Promise<Response>): Promise<Response> {
     let index = 0;
-    const middlewareStack = [...this.middlewares];
 
     const next = async (): Promise<Response> => {
-      if (index >= middlewareStack.length) {
-        return finalHandler();
+      if (index < this.middlewares.length) {
+        const middleware = this.middlewares[index++];
+        return middleware(req, next);
       }
-
-      const middleware = middlewareStack[index++];
-      try {
-        const response = await middleware(req, next);
-        return response;
-      } catch (error) {
-        if (this.errorHandler) {
-          return this.errorHandler(error instanceof Error ? error : new Error(String(error)), req);
-        }
-        throw error;
-      }
+      return handler();
     };
 
-    try {
-      return await next();
-    } catch (error) {
-      if (this.errorHandler) {
-        return this.errorHandler(error instanceof Error ? error : new Error(String(error)), req);
-      }
-      throw error;
-    }
+    return next();
   }
 }
 
-export function createMiddlewareChain(): MiddlewareChain {
-  return new MiddlewareChain();
+export function createMiddlewareChain(middlewares: Middleware[] = []): MiddlewareChain {
+  const chain = new MiddlewareChain();
+  middlewares.forEach(middleware => chain.add(middleware));
+  return chain;
 }
 
 // Common middleware factories
-export function createCorsMiddleware(options: {
-  origin?: string | string[];
-  methods?: string[];
-  headers?: string[];
-  credentials?: boolean;
-}) {
+export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
   const {
     origin = '*',
     methods = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     headers = ['Content-Type', 'Authorization'],
-    credentials = false,
   } = options;
+
+  const originValue = Array.isArray(origin) ? origin.join(', ') : origin;
 
   return async (req: Request, next: NextFunction): Promise<Response> => {
     if (req.method === 'OPTIONS') {
       return {
         status: 204,
         headers: {
-          'Access-Control-Allow-Origin': Array.isArray(origin) ? origin.join(',') : origin,
-          'Access-Control-Allow-Methods': methods.join(','),
-          'Access-Control-Allow-Headers': headers.join(','),
-          'Access-Control-Allow-Credentials': credentials.toString(),
+          'Access-Control-Allow-Origin': originValue,
+          'Access-Control-Allow-Methods': methods.join(', '),
+          'Access-Control-Allow-Headers': headers.join(', '),
         },
-        body: null,
+        body: undefined
       };
     }
 
     const response = await next();
-    response.headers = {
-      ...response.headers,
-      'Access-Control-Allow-Origin': Array.isArray(origin) ? origin.join(',') : origin,
-      'Access-Control-Allow-Credentials': credentials.toString(),
-    };
-
+    response.headers = response.headers || {};
+    response.headers['Access-Control-Allow-Origin'] = originValue;
     return response;
   };
 }
@@ -114,19 +85,39 @@ export function createAuthMiddleware(options: {
   unauthorized?: () => RouterError;
 }) {
   return async (req: Request, next: NextFunction): Promise<Response> => {
-    const result = await options.authenticate(req);
-    
-    if (!result) {
-      const error = options.unauthorized?.() || createInternalError('Unauthorized');
-      error.code = 'UNAUTHORIZED';
-      throw error;
-    }
+    try {
+      const result = await options.authenticate(req);
+      
+      if (!result) {
+        const error = options.unauthorized?.() || createInternalError('Unauthorized');
+        error.code = 'UNAUTHORIZED';
+        error.statusCode = 401;
+        Object.setPrototypeOf(error, RouterError.prototype);
+        throw error;
+      }
 
-    if (typeof result === 'object') {
-      req.user = result;
-    }
+      if (typeof result === 'object') {
+        req.user = result;
+      }
 
-    return next();
+      return next();
+    } catch (error) {
+      if (error instanceof Error) {
+        if ('code' in error && error.code === 'UNAUTHORIZED') {
+          throw error;
+        }
+        const authError = createInternalError('Unauthorized');
+        authError.code = 'UNAUTHORIZED';
+        authError.statusCode = 401;
+        Object.setPrototypeOf(authError, RouterError.prototype);
+        throw authError;
+      }
+      const authError = createInternalError('Unauthorized');
+      authError.code = 'UNAUTHORIZED';
+      authError.statusCode = 401;
+      Object.setPrototypeOf(authError, RouterError.prototype);
+      throw authError;
+    }
   };
 }
 
@@ -143,7 +134,13 @@ export function createRateLimitMiddleware(options: {
     handler = async () => ({
       status: 429,
       headers: { 'Content-Type': 'application/json' },
-      body: { error: 'Too many requests' },
+      body: {
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Too many requests',
+          details: { retryAfter: windowMs }
+        }
+      }
     }),
   } = options;
 

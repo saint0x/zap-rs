@@ -1,12 +1,12 @@
-import { native } from './bindings';
-import { RequestContext, ResponseContext, Middleware, Hook } from './types';
+import { createRouter, createStore, createHooks } from './bindings';
+import { Request, Response, Middleware, Hook } from './types';
 export * from './decorators';
 export * from './types';
 
 export class Zap {
-  private router = native.createRouter();
-  private dataStore = native.createStore();
-  private hooks = native.createHooks();
+  private router = createRouter();
+  private dataStore = createStore();
+  private hooks = createHooks();
   private controllers: any[] = [];
 
   constructor() {
@@ -34,7 +34,7 @@ export class Zap {
 
     // Register controller-level middleware
     controllerMetadata.middlewares.forEach((middleware: Middleware) => {
-      this.router.addMiddleware(controllerMetadata.path, middleware);
+      this.router.use(middleware);
     });
 
     // Register routes
@@ -44,32 +44,56 @@ export class Zap {
         const fullPath = `${controllerMetadata.path}${routeMetadata.path}`;
         
         // Create the route handler
-        const handler = async (ctx: RequestContext): Promise<ResponseContext> => {
-          // Run pre-handler hooks
-          for (const hook of routeMetadata.hooks.filter((h: Hook) => h.phase === 'pre-handler')) {
-            await hook.handler(ctx);
+        const handler = async (req: Request): Promise<Response> => {
+          // Run before hooks
+          for (const hook of routeMetadata.hooks.filter((h: Hook) => h.phase === 'before')) {
+            await hook.handler(req);
           }
 
           // Run validation if present
-          if (routeMetadata.validation) {
-            ctx.body = routeMetadata.validation.validate(ctx.body);
+          if (routeMetadata.validation && req.body) {
+            req.body = await routeMetadata.validation.validate(req.body);
           }
 
           // Call the actual handler
-          const result = await controller[methodName].call(controller, ctx);
+          const result = await controller[methodName].call(controller, req);
 
-          // Run post-handler hooks
-          for (const hook of routeMetadata.hooks.filter((h: Hook) => h.phase === 'post-handler')) {
-            await hook.handler(ctx);
+          // Run after hooks
+          for (const hook of routeMetadata.hooks.filter((h: Hook) => h.phase === 'after')) {
+            await hook.handler(req);
           }
 
           return result;
         };
 
         // Register the route with middleware
-        this.router.addRoute(routeMetadata.method, fullPath, handler);
+        switch (routeMetadata.method) {
+          case 'GET':
+            this.router.get(fullPath, handler);
+            break;
+          case 'POST':
+            this.router.post(fullPath, handler);
+            break;
+          case 'PUT':
+            this.router.put(fullPath, handler);
+            break;
+          case 'DELETE':
+            this.router.delete(fullPath, handler);
+            break;
+          case 'PATCH':
+            this.router.patch(fullPath, handler);
+            break;
+          case 'OPTIONS':
+            this.router.options(fullPath, handler);
+            break;
+          case 'HEAD':
+            this.router.head(fullPath, handler);
+            break;
+        }
+
+        // Register route-level middleware
         routeMetadata.middlewares.forEach((middleware: Middleware) => {
-          this.router.addMiddleware(fullPath, middleware);
+          this.router.use(middleware);
         });
       }
     }
@@ -81,8 +105,24 @@ export class Zap {
     path: string,
     headers: Record<string, string> = {},
     body?: unknown
-  ): Promise<ResponseContext> {
-    return this.router.handleRequest(method, path, headers, body);
+  ): Promise<Response> {
+    const request: Request = {
+      method,
+      path,
+      url: path,
+      headers,
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+      params: {},
+      query: {},
+      context: {
+        id: Math.random().toString(36).substring(7),
+        timestamp: Date.now(),
+        metadata: {},
+        state: new Map()
+      },
+      ip: headers['x-forwarded-for'] || headers['x-real-ip']
+    };
+    return this.router.handleRequest(request);
   }
 
   // Store methods
@@ -103,12 +143,12 @@ export class Zap {
   }
 
   // Hook methods
-  addHook(phase: Hook['phase'], handler: (ctx: RequestContext) => Promise<void>): void {
-    this.hooks.addHook(phase, handler);
+  addHook(phase: Hook['phase'], handler: (req: Request) => Promise<void>): void {
+    this.hooks.addHook({ phase, handler });
   }
 
-  removeHook(phase: Hook['phase'], handler: (ctx: RequestContext) => Promise<void>): void {
-    this.hooks.removeHook(phase, handler);
+  removeHook(phase: Hook['phase'], handler: (req: Request) => Promise<void>): void {
+    this.hooks.removeHook({ phase, handler });
   }
 }
 

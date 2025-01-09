@@ -1,98 +1,181 @@
-import { ValidationSchema, ValidationOptions, ValidationError } from '../types';
-import { createValidator } from './index';
+import { ValidationSchema, ValidationOptions, ValidationError, Request } from '../types';
 
-const VALIDATION_METADATA_KEY = Symbol('validation');
+export function validate(schema: ValidationSchema, options: ValidationOptions = {}): MethodDecorator {
+  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    const originalMethod = descriptor.value;
 
-export interface ValidationMetadata {
-  body?: ValidationSchema;
-  query?: ValidationSchema;
-  params?: ValidationSchema;
-  options?: ValidationOptions;
-}
+    descriptor.value = async function(...args: any[]) {
+      const request = args[0] as Request;
+      if (!request || !request.body) {
+        throw new ValidationError('Request body is required');
+      }
 
-/**
- * Validates request body against the provided schema
- */
-export function validateBody(schema: ValidationSchema, options?: ValidationOptions): MethodDecorator {
-  return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
-    const metadata: ValidationMetadata = Reflect.getMetadata(VALIDATION_METADATA_KEY, target, propertyKey) || {};
-    metadata.body = schema;
-    metadata.options = options;
-    Reflect.defineMetadata(VALIDATION_METADATA_KEY, metadata, target, propertyKey);
+      try {
+        // Validate request body
+        const validatedBody = validateSchema(schema, request.body, options);
+        Object.defineProperty(request, 'body', {
+          value: validatedBody,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
+
+        return await originalMethod.apply(this, args);
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new ValidationError(error.message);
+        }
+        throw error;
+      }
+    };
+
     return descriptor;
   };
 }
 
-/**
- * Validates request query parameters against the provided schema
- */
-export function validateQuery(schema: ValidationSchema, options?: ValidationOptions): MethodDecorator {
-  return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
-    const metadata: ValidationMetadata = Reflect.getMetadata(VALIDATION_METADATA_KEY, target, propertyKey) || {};
-    metadata.query = schema;
-    metadata.options = options;
-    Reflect.defineMetadata(VALIDATION_METADATA_KEY, metadata, target, propertyKey);
+export function validateQuery(schema: ValidationSchema, options: ValidationOptions = {}): MethodDecorator {
+  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    const originalMethod = descriptor.value;
+
+    descriptor.value = async function(...args: any[]) {
+      const request = args[0] as Request;
+      if (!request) {
+        throw new ValidationError('Request is required');
+      }
+
+      try {
+        // Validate query parameters
+        const validatedQuery = validateSchema(schema, request.query || {}, options);
+        Object.defineProperty(request, 'query', {
+          value: validatedQuery,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
+
+        return await originalMethod.apply(this, args);
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new ValidationError(error.message);
+        }
+        throw error;
+      }
+    };
+
     return descriptor;
   };
 }
 
-/**
- * Validates request path parameters against the provided schema
- */
-export function validateParams(schema: ValidationSchema, options?: ValidationOptions): MethodDecorator {
-  return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
-    const metadata: ValidationMetadata = Reflect.getMetadata(VALIDATION_METADATA_KEY, target, propertyKey) || {};
-    metadata.params = schema;
-    metadata.options = options;
-    Reflect.defineMetadata(VALIDATION_METADATA_KEY, metadata, target, propertyKey);
+export function validateParams(schema: ValidationSchema, options: ValidationOptions = {}): MethodDecorator {
+  return (_target: any, _propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor => {
+    const originalMethod = descriptor.value;
+
+    descriptor.value = async function(...args: any[]) {
+      const request = args[0] as Request;
+      if (!request) {
+        throw new ValidationError('Request is required');
+      }
+
+      try {
+        // Validate path parameters
+        const validatedParams = validateSchema(schema, request.params || {}, options);
+        Object.defineProperty(request, 'params', {
+          value: validatedParams,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
+
+        return await originalMethod.apply(this, args);
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new ValidationError(error.message);
+        }
+        throw error;
+      }
+    };
+
     return descriptor;
   };
 }
 
-/**
- * Creates a validation middleware from the metadata
- */
-export function createValidationMiddleware(metadata: ValidationMetadata) {
-  const bodyValidator = metadata.body ? createValidator(metadata.body, metadata.options) : null;
-  const queryValidator = metadata.query ? createValidator(metadata.query, metadata.options) : null;
-  const paramsValidator = metadata.params ? createValidator(metadata.params, metadata.options) : null;
+function validateSchema(schema: ValidationSchema, data: unknown, options: ValidationOptions): unknown {
+  if (!data) {
+    throw new Error('Data is required');
+  }
 
-  return async (req: Request, next: () => Promise<Response>): Promise<Response> => {
-    try {
-      // Validate body
-      if (bodyValidator && req.body) {
-        req.body = await bodyValidator.validate(req.body);
-      }
+  // Basic type validation
+  if (schema.type === 'object' && typeof data !== 'object') {
+    throw new Error(`Expected object, got ${typeof data}`);
+  }
+  if (schema.type === 'array' && !Array.isArray(data)) {
+    throw new Error(`Expected array, got ${typeof data}`);
+  }
+  if (schema.type === 'string' && typeof data !== 'string') {
+    throw new Error(`Expected string, got ${typeof data}`);
+  }
+  if (schema.type === 'number' && typeof data !== 'number') {
+    throw new Error(`Expected number, got ${typeof data}`);
+  }
+  if (schema.type === 'boolean' && typeof data !== 'boolean') {
+    throw new Error(`Expected boolean, got ${typeof data}`);
+  }
 
-      // Validate query
-      if (queryValidator && req.query) {
-        req.query = await queryValidator.validate(req.query) as Record<string, string>;
-      }
+  // Object property validation
+  if (schema.type === 'object' && schema.properties && typeof data === 'object') {
+    const validatedData: Record<string, unknown> = {};
+    const dataObj = data as Record<string, unknown>;
+    const properties = schema.properties;  // Assign to local variable to satisfy type checker
 
-      // Validate params
-      if (paramsValidator && req.params) {
-        req.params = await paramsValidator.validate(req.params) as Record<string, string>;
+    // Check required properties
+    if (schema.required) {
+      for (const required of schema.required) {
+        if (!(required in dataObj)) {
+          throw new Error(`Missing required property: ${required}`);
+        }
       }
-
-      return next();
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'VALIDATION_ERROR') {
-        const validationError = error as ValidationError;
-        throw {
-          code: 'VALIDATION_ERROR',
-          statusCode: 400,
-          message: 'Validation failed',
-          details: validationError.details,
-        };
-      }
-      throw error;
     }
-  };
-}
 
-/**
- * Gets validation metadata from a method
- */
-export function getValidationMetadata(target: any, propertyKey: string): ValidationMetadata | undefined {
-  return Reflect.getMetadata(VALIDATION_METADATA_KEY, target, propertyKey);
+    // Validate each property
+    for (const [key, propSchema] of Object.entries(properties)) {
+      if (key in dataObj) {
+        validatedData[key] = validateSchema(propSchema, dataObj[key], options);
+      }
+    }
+
+    // Handle unknown properties based on options
+    if (!options.allowUnknown) {
+      const unknownProps = Object.keys(dataObj).filter(key => !(key in properties));
+      if (unknownProps.length > 0) {
+        throw new Error(`Unknown properties: ${unknownProps.join(', ')}`);
+      }
+    }
+
+    return options.stripUnknown ? validatedData : { ...dataObj, ...validatedData };
+  }
+
+  // String validation
+  if (schema.type === 'string' && typeof data === 'string') {
+    if (schema.minLength !== undefined && data.length < schema.minLength) {
+      throw new Error(`String must be at least ${schema.minLength} characters long`);
+    }
+    if (schema.maxLength !== undefined && data.length > schema.maxLength) {
+      throw new Error(`String must be at most ${schema.maxLength} characters long`);
+    }
+    if (schema.pattern && !new RegExp(schema.pattern).test(data)) {
+      throw new Error(`String must match pattern: ${schema.pattern}`);
+    }
+  }
+
+  // Number validation
+  if (schema.type === 'number' && typeof data === 'number') {
+    if (schema.minimum !== undefined && data < schema.minimum) {
+      throw new Error(`Number must be at least ${schema.minimum}`);
+    }
+    if (schema.maximum !== undefined && data > schema.maximum) {
+      throw new Error(`Number must be at most ${schema.maximum}`);
+    }
+  }
+
+  return data;
 } 

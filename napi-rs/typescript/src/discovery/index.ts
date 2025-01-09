@@ -11,7 +11,7 @@ export interface RouteInfo {
   path: string;
   method: string;
   metadata: RouteMetadata;
-  handler: Function;
+  handler: (...args: unknown[]) => unknown;
 }
 
 export interface DiscoveryOptions {

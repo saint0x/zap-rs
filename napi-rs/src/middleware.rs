@@ -1,41 +1,70 @@
 use crate::error::ZapError;
 use crate::types::{JsRequest, JsResponse};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use std::future::Future;
-use std::pin::Pin;
+use napi::bindgen_prelude::*;
 
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-pub type Next<'a> = Box<dyn FnOnce(JsRequest) -> BoxFuture<'a, Result<JsResponse, ZapError>> + Send + 'a>;
-pub type Middleware = Box<dyn Fn(JsRequest, Next) -> BoxFuture<Result<JsResponse, ZapError>> + Send + Sync>;
+pub type Next = Box<dyn FnOnce(JsRequest) -> napi::Result<JsResponse>>;
+pub type Middleware = Box<dyn Fn(JsRequest, Next) -> napi::Result<JsResponse>>;
+
+struct MiddlewareEntry {
+    handler: Middleware,
+    cleanup: Option<Box<dyn Fn()>>,
+}
 
 pub struct MiddlewareChain {
-    handlers: Arc<Mutex<Vec<Middleware>>>,
+    handlers: Vec<MiddlewareEntry>,
 }
 
 impl MiddlewareChain {
     pub fn new() -> Self {
         Self {
-            handlers: Arc::new(Mutex::new(Vec::new())),
+            handlers: Vec::new(),
         }
     }
 
-    pub fn add(&mut self, middleware: Middleware) {
-        self.handlers.blocking_lock().push(middleware);
+    pub fn add(&mut self, middleware: Middleware, cleanup: Option<Box<dyn Fn()>>) {
+        self.handlers.push(MiddlewareEntry {
+            handler: middleware,
+            cleanup,
+        });
     }
 
-    pub async fn execute(&self, mut request: JsRequest) -> Result<JsResponse, ZapError> {
-        let handlers = Arc::clone(&self.handlers);
-        let handlers = handlers.lock().await;
-
-        for handler in handlers.iter().rev() {
-            let next: Next = Box::new(move |req| Box::pin(async move { Ok(JsResponse::default()) }));
-            request = match handler(request, next).await {
-                Ok(response) => return Ok(response),
-                Err(e) => return Err(e),
-            };
+    pub fn execute(&self, request: JsRequest) -> napi::Result<JsResponse> {
+        if self.handlers.is_empty() {
+            return Ok(JsResponse::default());
         }
 
-        Ok(JsResponse::default())
+        let mut cleanup_stack = Vec::new();
+        
+        fn execute_middleware(
+            index: usize,
+            request: JsRequest,
+            handlers: &[MiddlewareEntry],
+            cleanup_stack: &mut Vec<Box<dyn Fn()>>,
+        ) -> napi::Result<JsResponse> {
+            if index >= handlers.len() {
+                return Ok(JsResponse::default());
+            }
+            
+            let entry = &handlers[index];
+            if let Some(cleanup) = &entry.cleanup {
+                cleanup_stack.push(cleanup.clone());
+            }
+            
+            let handler = &entry.handler;
+            let next = Box::new(move |req: JsRequest| {
+                execute_middleware(index + 1, req, handlers, cleanup_stack)
+            });
+            
+            handler(request, next)
+        }
+        
+        let result = execute_middleware(0, request, &self.handlers, &mut cleanup_stack);
+        
+        // Execute cleanup functions in reverse order
+        for cleanup in cleanup_stack.into_iter().rev() {
+            cleanup();
+        }
+        
+        result
     }
 } 

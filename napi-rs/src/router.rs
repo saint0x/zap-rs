@@ -1,247 +1,92 @@
 use napi_derive::napi;
-use napi::bindgen_prelude::*;
-use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use napi::{
+    JsFunction,
+    Result,
+    Env,
+};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use crate::types::{JsRequest, JsResponse, ZapError, ResponseBody};
-
-// Define specific ThreadsafeFunction types to avoid ambiguity
-type RequestTsfn = ThreadsafeFunction<JsRequest, ErrorStrategy = Fatal>;
-type ErrorTsfn = ThreadsafeFunction<ZapError, ErrorStrategy = Fatal>;
-
-// Define callback types that are Send + Sync
-type RequestCallback = Box<dyn Fn(JsRequest) -> napi::Result<JsResponse> + Send + Sync>;
-type ErrorCallback = Box<dyn Fn(ZapError) -> napi::Result<JsResponse> + Send + Sync>;
+use crate::types::{JsRequest, JsResponse, ResponseBody};
 
 #[napi]
-pub struct JsRouter {
-    routes: Arc<RwLock<HashMap<String, RequestCallback>>>,
-    middlewares: Arc<RwLock<Vec<RequestCallback>>>,
-    hooks: Arc<RwLock<Vec<RequestCallback>>>,
-    error_handler: Arc<RwLock<Option<ErrorCallback>>>,
+pub struct Router {
+    routes: HashMap<String, JsFunction>,
 }
 
 #[napi]
-impl JsRouter {
+impl Router {
     #[napi(constructor)]
     pub fn new() -> Self {
         Self {
-            routes: Arc::new(RwLock::new(HashMap::new())),
-            middlewares: Arc::new(RwLock::new(Vec::new())),
-            hooks: Arc::new(RwLock::new(Vec::new())),
-            error_handler: Arc::new(RwLock::new(None)),
+            routes: HashMap::new(),
         }
     }
 
     #[napi]
-    pub async fn handle(&self, request: JsRequest) -> napi::Result<JsResponse> {
-        // Run middlewares
-        let middlewares = self.middlewares.read().await;
-        for middleware in middlewares.iter() {
-            middleware(request.clone())?;
-        }
-
-        // Run hooks
-        let hooks = self.hooks.read().await;
-        for hook in hooks.iter() {
-            hook(request.clone())?;
-        }
-
-        // O(1) route lookup using hash map
+    pub fn handle(&self, env: Env, request: JsRequest) -> Result<JsResponse> {
         let route_key = format!("{} {}", request.method, request.uri);
-        let routes = self.routes.read().await;
         
-        if let Some(handler) = routes.get(&route_key) {
-            handler(request)
-        } else {
-            let error = ZapError {
-                code: "NOT_FOUND".to_string(),
-                details: None,
-            };
-
-            let error_handler = self.error_handler.read().await;
-            if let Some(handler) = &*error_handler {
-                handler(error)
-            } else {
+        if let Some(handler) = self.routes.get(&route_key) {
+            // Convert request to JsObject
+            let request_obj = request.to_object(env)?;
+            
+            // Call the handler
+            let result = handler.call(None, &[request_obj])?;
+            
+            // Convert to JsResponse
+            if result.is_promise()? {
+                // Return the Promise directly
                 Ok(JsResponse {
-                    status: 404,
-                    headers: {
-                        let mut map = HashMap::new();
-                        map.insert("content-type".to_string(), "application/json".to_string());
-                        map
-                    },
+                    status: 200,
+                    headers: HashMap::new(),
                     body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Not Found".to_string(),
+                        type_: "Promise".to_string(),
+                        content: "Async response".to_string(),
                     }),
                 })
+            } else {
+                // Convert sync response
+                JsResponse::from_object(result.coerce_to_object()?)
             }
+        } else {
+            Ok(JsResponse {
+                status: 404,
+                headers: {
+                    let mut map = HashMap::new();
+                    map.insert("content-type".to_string(), "application/json".to_string());
+                    map
+                },
+                body: Some(ResponseBody {
+                    type_: "Text".to_string(),
+                    content: "Route not found".to_string(),
+                }),
+            })
         }
     }
 
     #[napi]
-    pub async fn get(&mut self, path: String, handler: JsFunction) -> napi::Result<()> {
-        let tsfn: RequestTsfn = handler.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
-        let callback = Box::new(move |request: JsRequest| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            
-            tsfn.call(
-                Ok(request.clone()),
-                ThreadsafeFunctionCallMode::NonBlocking,
-                |ctx| {
-                    tx.send(ctx).ok();
-                    Ok(())
-                },
-            );
-
-            match tokio::runtime::Handle::current().block_on(rx) {
-                Ok(result) => result,
-                Err(_) => Ok(JsResponse {
-                    status: 500,
-                    headers: HashMap::new(),
-                    body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Internal Server Error".to_string(),
-                    }),
-                }),
-            }
-        });
-
-        let mut routes = self.routes.write().await;
-        routes.insert(format!("GET {}", path), callback);
+    pub fn register(&mut self, method: String, path: String, handler: JsFunction) -> Result<()> {
+        let route_key = format!("{} {}", method, path);
+        self.routes.insert(route_key, handler);
         Ok(())
     }
 
     #[napi]
-    pub async fn post(&mut self, path: String, handler: JsFunction) -> napi::Result<()> {
-        let tsfn: RequestTsfn = handler.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
-        let callback = Box::new(move |request: JsRequest| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            
-            tsfn.call(
-                Ok(request.clone()),
-                ThreadsafeFunctionCallMode::NonBlocking,
-                |ctx| {
-                    tx.send(ctx).ok();
-                    Ok(())
-                },
-            );
-
-            match tokio::runtime::Handle::current().block_on(rx) {
-                Ok(result) => result,
-                Err(_) => Ok(JsResponse {
-                    status: 500,
-                    headers: HashMap::new(),
-                    body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Internal Server Error".to_string(),
-                    }),
-                }),
-            }
-        });
-
-        let mut routes = self.routes.write().await;
-        routes.insert(format!("POST {}", path), callback);
-        Ok(())
+    pub fn get(&mut self, path: String, handler: JsFunction) -> Result<()> {
+        self.register("GET".to_string(), path, handler)
     }
 
     #[napi]
-    pub async fn use_middleware(&mut self, middleware: JsFunction) -> napi::Result<()> {
-        let tsfn: RequestTsfn = middleware.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
-        let callback = Box::new(move |request: JsRequest| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            
-            tsfn.call(
-                Ok(request.clone()),
-                ThreadsafeFunctionCallMode::NonBlocking,
-                |ctx| {
-                    tx.send(ctx).ok();
-                    Ok(())
-                },
-            );
-
-            match tokio::runtime::Handle::current().block_on(rx) {
-                Ok(result) => result,
-                Err(_) => Ok(JsResponse {
-                    status: 500,
-                    headers: HashMap::new(),
-                    body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Internal Server Error".to_string(),
-                    }),
-                }),
-            }
-        });
-
-        let mut middlewares = self.middlewares.write().await;
-        middlewares.push(callback);
-        Ok(())
+    pub fn post(&mut self, path: String, handler: JsFunction) -> Result<()> {
+        self.register("POST".to_string(), path, handler)
     }
 
     #[napi]
-    pub async fn add_hook(&mut self, hook: JsFunction) -> napi::Result<()> {
-        let tsfn: RequestTsfn = hook.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
-        let callback = Box::new(move |request: JsRequest| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            
-            tsfn.call(
-                Ok(request.clone()),
-                ThreadsafeFunctionCallMode::NonBlocking,
-                |ctx| {
-                    tx.send(ctx).ok();
-                    Ok(())
-                },
-            );
-
-            match tokio::runtime::Handle::current().block_on(rx) {
-                Ok(result) => result,
-                Err(_) => Ok(JsResponse {
-                    status: 500,
-                    headers: HashMap::new(),
-                    body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Internal Server Error".to_string(),
-                    }),
-                }),
-            }
-        });
-
-        let mut hooks = self.hooks.write().await;
-        hooks.push(callback);
-        Ok(())
+    pub fn put(&mut self, path: String, handler: JsFunction) -> Result<()> {
+        self.register("PUT".to_string(), path, handler)
     }
 
     #[napi]
-    pub async fn set_error_handler(&mut self, handler: JsFunction) -> napi::Result<()> {
-        let tsfn: ErrorTsfn = handler.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
-        let callback = Box::new(move |error: ZapError| {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            
-            tsfn.call(
-                Ok(error.clone()),
-                ThreadsafeFunctionCallMode::NonBlocking,
-                |ctx| {
-                    tx.send(ctx).ok();
-                    Ok(())
-                },
-            );
-
-            match tokio::runtime::Handle::current().block_on(rx) {
-                Ok(result) => result,
-                Err(_) => Ok(JsResponse {
-                    status: 500,
-                    headers: HashMap::new(),
-                    body: Some(ResponseBody {
-                        type_: "Text".to_string(),
-                        content: "Internal Server Error".to_string(),
-                    }),
-                }),
-            }
-        });
-
-        let mut error_handler = self.error_handler.write().await;
-        *error_handler = Some(callback);
-        Ok(())
+    pub fn delete(&mut self, path: String, handler: JsFunction) -> Result<()> {
+        self.register("DELETE".to_string(), path, handler)
     }
 } 

@@ -1,1 +1,0 @@
-Pin<Box<(dyn futures::Future<Output = std::result::Result<error::Error, napi::Error<error::Error>>> + std::marker::Send + 'static)>>

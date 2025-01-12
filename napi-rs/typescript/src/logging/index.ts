@@ -1,4 +1,4 @@
-import { Logger, LogEntry, Request, Response } from '../types';
+import { Logger, LogEntry, JsRequest as Request, JsResponse as Response } from '../types';
 
 export enum LogLevel {
   DEBUG = 'debug',
@@ -10,24 +10,26 @@ export enum LogLevel {
 export interface LoggerOptions {
   level?: LogLevel;
   format?: (entry: LogEntry) => string;
-  transport?: (formatted: string) => void;
+  destination?: NodeJS.WritableStream;
 }
 
-export class RouterLogger implements Logger {
+export class ConsoleLogger implements Logger {
   private level: LogLevel;
   private format: (entry: LogEntry) => string;
-  private transport: (formatted: string) => void;
+  private destination: NodeJS.WritableStream;
 
   constructor(options: LoggerOptions = {}) {
     this.level = options.level || LogLevel.INFO;
     this.format = options.format || this.defaultFormat;
-    this.transport = options.transport || console.log;
+    this.destination = options.destination || process.stdout;
   }
 
   private defaultFormat(entry: LogEntry): string {
-    const timestamp = new Date().toISOString();
-    const { level, message, ...meta } = entry;
-    return `${timestamp} [${level.toUpperCase()}] ${message} ${JSON.stringify(meta)}`;
+    const timestamp = new Date(entry.timestamp).toISOString();
+    const level = entry.level.toUpperCase().padEnd(5);
+    return `${timestamp} ${level} ${entry.message}${
+      entry.error ? `\n${entry.error.stack}` : ''
+    }`;
   }
 
   private shouldLog(level: LogLevel): boolean {
@@ -35,66 +37,61 @@ export class RouterLogger implements Logger {
     return levels.indexOf(level) >= levels.indexOf(this.level);
   }
 
-  private log(level: LogLevel, message: string, meta: Record<string, unknown> = {}): void {
-    if (this.shouldLog(level)) {
-      const entry: LogEntry = {
-        level,
-        message,
-        timestamp: Date.now(),
-        ...meta
-      };
-      const formatted = this.format(entry);
-      this.transport(formatted);
+  private log(level: LogLevel, message: string, error?: Error): void {
+    if (!this.shouldLog(level)) {
+      return;
     }
+
+    const entry: LogEntry = {
+      timestamp: Date.now(),
+      level,
+      message,
+      error,
+    };
+
+    this.destination.write(this.format(entry) + '\n');
   }
 
-  debug(message: string, meta?: Record<string, unknown>): void {
-    this.log(LogLevel.DEBUG, message, meta);
+  debug(message: string): void {
+    this.log(LogLevel.DEBUG, message);
   }
 
-  info(message: string, meta?: Record<string, unknown>): void {
-    this.log(LogLevel.INFO, message, meta);
+  info(message: string): void {
+    this.log(LogLevel.INFO, message);
   }
 
-  warn(message: string, meta?: Record<string, unknown>): void {
-    this.log(LogLevel.WARN, message, meta);
+  warn(message: string): void {
+    this.log(LogLevel.WARN, message);
   }
 
-  error(message: string, meta?: Record<string, unknown>): void {
-    this.log(LogLevel.ERROR, message, meta);
+  error(message: string, error?: Error): void {
+    this.log(LogLevel.ERROR, message, error);
   }
-}
-
-export function createLogger(options?: LoggerOptions): Logger {
-  return new RouterLogger(options);
 }
 
 export function createRequestLogger(logger: Logger) {
   return async (req: Request, next: () => Promise<Response>): Promise<Response> => {
     const startTime = Date.now();
-    
+
+    logger.info(`Request started: ${req.method} ${req.uri}`);
+
     try {
       const response = await next();
       const duration = Date.now() - startTime;
-      
-      logger.info('Request completed', {
-        method: req.method,
-        path: req.path,
-        status: response.status,
-        duration,
-      });
-      
+
+      logger.info(
+        `Request completed: ${req.method} ${req.uri} ${response.status} ${duration}ms`
+      );
+
       return response;
     } catch (error) {
       const duration = Date.now() - startTime;
-      
-      logger.error('Request failed', {
-        method: req.method,
-        path: req.path,
-        error: error instanceof Error ? error.message : String(error),
-        duration,
-      });
-      
+
+      logger.error(
+        `Request failed: ${req.method} ${req.uri} ${duration}ms`,
+        error instanceof Error ? error : new Error(String(error))
+      );
+
       throw error;
     }
   };
@@ -102,34 +99,30 @@ export function createRequestLogger(logger: Logger) {
 
 export function createErrorLogger(logger: Logger) {
   return (error: Error): void => {
-    logger.error('Unhandled error', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    });
+    logger.error('Unhandled error', error);
   };
 }
 
 // Utility functions for creating specialized loggers
 export function createAccessLogger(options?: LoggerOptions): Logger {
-  return createLogger({
+  return new ConsoleLogger({
     ...options,
     format: (entry) => {
       const timestamp = new Date().toISOString();
-      const { method, path, status, duration } = entry;
-      return `${timestamp} ${method} ${path} ${status} ${duration}ms`;
+      const { method, uri, status, duration } = entry as LogEntry & { method: string; uri: string; status: number; duration: number };
+      return `${timestamp} ${method} ${uri} ${status} ${duration}ms`;
     },
   });
 }
 
 export function createErrorLoggerWithFormat(options?: LoggerOptions): Logger {
-  return createLogger({
+  return new ConsoleLogger({
     ...options,
     level: LogLevel.ERROR,
     format: (entry) => {
       const timestamp = new Date().toISOString();
-      const { name, message, stack } = entry;
-      return `${timestamp} [ERROR] ${name}: ${message}\n${stack || ''}`;
+      const { error } = entry;
+      return `${timestamp} [ERROR] ${error?.name || 'Error'}: ${error?.message}\n${error?.stack || ''}`;
     },
   });
 }

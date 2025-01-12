@@ -41,11 +41,11 @@
   },
   "homepage": "https://github.com/zap-rs/zap#readme",
   "dependencies": {
-    "reflect-metadata": "^0.1.13"
+    "reflect-metadata": "^0.1.14"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "@types/jest": "^29.0.0",
+    "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
@@ -63,4 +63,4 @@
   "engines": {
     "node": ">=16.0.0"
   }
-} 
+}

@@ -1,121 +1,97 @@
-import { 
-  createRouter, 
-  createBodyParserMiddleware, 
-  createCorsMiddleware, 
-  createLogger,
-  createHooks,
-  Server,
-  Request,
-  Response 
-} from '@zap-rs/core';
+import 'reflect-metadata';
+import { createRouter } from '../../../src/bindings';
+import { createLogger } from '../../../src/logging/logger';
+import { JsRequest, JsResponse, RouteHandler } from '../../../src/types';
 import { TestController } from './controllers/test.controller';
-import chalk from 'chalk';
 
-const log = {
-  info: (msg: string, meta?: any) => console.log(chalk.blue(`ℹ️  ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : ''),
-  success: (msg: string, meta?: any) => console.log(chalk.green(`✅ ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : ''),
-  warn: (msg: string, meta?: any) => console.log(chalk.yellow(`⚠️  ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : ''),
-  error: (msg: string, meta?: any) => console.log(chalk.red(`❌ ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : ''),
-  debug: (msg: string, meta?: any) => console.log(chalk.magenta(`🔍 ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : ''),
-  http: (msg: string, meta?: any) => console.log(chalk.cyan(`🌐 ${msg}`), meta ? chalk.gray(JSON.stringify(meta, null, 2)) : '')
-};
+const logger = createLogger({ level: 'debug' });
+const router = createRouter();
 
-async function main() {
-  try {
-    log.info('Starting Zap server setup...');
+// Register controller routes
+const controller = new TestController();
+const metadata = Reflect.getMetadata('controller', TestController);
+if (metadata?.path) {
+  const basePath = metadata.path;
+  const prototype = Object.getPrototypeOf(controller);
+  const propertyNames = Object.getOwnPropertyNames(prototype);
 
-    // Create logger
-    log.debug('Creating logger...');
-    const logger = createLogger();
-    log.success('Logger created');
-
-    // Create router and hooks
-    log.debug('Creating router and hooks...');
-    const router = createRouter();
-    const hooks = createHooks();
-    log.success('Router and hooks created');
-
-    // Add hooks
-    log.debug('Setting up request hooks...');
-    hooks.addPreRouting(async (req: Request) => {
-      log.http(`➡️  Incoming ${req.method} request to ${req.url}`, {
-        headers: req.headers,
-        query: req.query,
-        params: req.params
-      });
-      return req;
-    });
-
-    hooks.addPostHandler(async (res: Response) => {
-      log.http(`⬅️  Outgoing response ${res.status}`, {
-        headers: res.headers
-      });
-      return res;
-    });
-
-    // Set up error handling
-    log.debug('Configuring error handler...');
-    router.setErrorHandler(async (error) => {
-      log.error('Request failed', { 
-        code: error.code,
-        message: error.message,
-        details: error.details 
-      });
-
-      return {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: {
-          error: {
-            code: error.code || 'INTERNAL_ERROR',
-            message: error.message,
-            details: error.details
-          }
-        }
-      };
-    });
-    log.success('Error handler configured');
-
-    // Add global middleware
-    log.debug('Setting up global middleware...');
-    log.debug('Adding CORS middleware...');
-    router.use(createCorsMiddleware({
-      origin: '*',
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
-    }));
-    log.success('CORS middleware added');
-
-    log.debug('Adding body parser middleware...');
-    router.use(createBodyParserMiddleware());
-    log.success('Body parser middleware added');
-
-    // Register controllers
-    log.debug('Registering controllers...');
-    router.registerController(new TestController());
-    log.success('Controllers registered');
-
-    // Create and start server
-    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-    log.info(`Starting server on port ${port}...`);
-    
-    const server = new Server(router);
-    await server.listen(port);
-    log.success(`🚀 Server is running at http://localhost:${port}`);
-    log.info('Available test endpoints:', {
-      hello: 'GET /api/hello',
-      echo: 'GET /api/echo',
-      createUser: 'POST /api/users',
-      getUser: 'GET /api/users/:id',
-      updateUser: 'PUT /api/users/:id',
-      deleteUser: 'DELETE /api/users/:id',
-      error: 'GET /api/error',
-      clearStore: 'GET /api/store/clear'
-    });
-
-  } catch (error) {
-    log.error('Failed to start server:', error);
-    process.exit(1);
+  for (const prop of propertyNames) {
+    const routeMetadata = Reflect.getMetadata('route', prototype, prop);
+    if (routeMetadata) {
+      const { method, path } = routeMetadata;
+      const fullPath = basePath + path;
+      const handler = (controller[prop as keyof TestController] as Function).bind(controller) as RouteHandler;
+      
+      switch (method.toLowerCase()) {
+        case 'get':
+          router.get(fullPath, handler);
+          break;
+        case 'post':
+          router.post(fullPath, handler);
+          break;
+        case 'put':
+          router.put(fullPath, handler);
+          break;
+        case 'delete':
+          router.delete(fullPath, handler);
+          break;
+      }
+    }
   }
 }
 
-main(); 
+// Example requests
+async function runTests() {
+  try {
+    // Test GET /test/hello
+    const helloRequest: JsRequest = {
+      method: 'GET',
+      uri: '/test/hello',
+      headers: {},
+      params: {},
+      query: {},
+    };
+    const helloResponse = await router.handle(helloRequest);
+    logger.info('Hello response: ' + JSON.stringify(helloResponse));
+
+    // Test POST /test/echo
+    const echoRequest: JsRequest = {
+      method: 'POST',
+      uri: '/test/echo',
+      headers: {},
+      params: {},
+      query: {},
+      body: { message: 'Echo test' },
+    };
+    const echoResponse = await router.handle(echoRequest);
+    logger.info('Echo response: ' + JSON.stringify(echoResponse));
+
+    // Test PUT /test/update
+    const updateRequest: JsRequest = {
+      method: 'PUT',
+      uri: '/test/update',
+      headers: {},
+      params: {},
+      query: {},
+      body: { data: 'Update test' },
+    };
+    const updateResponse = await router.handle(updateRequest);
+    logger.info('Update response: ' + JSON.stringify(updateResponse));
+
+    // Test DELETE /test/remove
+    const deleteRequest: JsRequest = {
+      method: 'DELETE',
+      uri: '/test/remove',
+      headers: {},
+      params: {},
+      query: {},
+    };
+    const deleteResponse = await router.handle(deleteRequest);
+    logger.info('Delete response: ' + JSON.stringify(deleteResponse));
+
+  } catch (error) {
+    logger.error('Test error:', error as Error);
+  }
+}
+
+runTests(); 

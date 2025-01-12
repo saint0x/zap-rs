@@ -1,28 +1,10 @@
 use napi_derive::napi;
 use napi::bindgen_prelude::*;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-// Define a wrapper type for JsUnknown to handle cloning
-#[derive(Clone)]
-struct StoredValue(JsUnknown);
-
-impl From<JsUnknown> for StoredValue {
-    fn from(value: JsUnknown) -> Self {
-        StoredValue(value)
-    }
-}
-
-impl From<StoredValue> for JsUnknown {
-    fn from(value: StoredValue) -> Self {
-        value.0
-    }
-}
 
 #[napi]
 pub struct JsStore {
-    data: Arc<RwLock<HashMap<String, StoredValue>>>,
+    data: HashMap<String, JsUnknown>,
 }
 
 #[napi]
@@ -30,64 +12,55 @@ impl JsStore {
     #[napi(constructor)]
     pub fn new() -> Self {
         Self {
-            data: Arc::new(RwLock::new(HashMap::new())),
+            data: HashMap::new(),
         }
     }
 
     #[napi]
-    pub async fn get(&self, key: String) -> napi::Result<Option<JsUnknown>> {
-        let store = self.data.read().await;
-        Ok(store.get(&key).map(|v| v.clone().into()))
+    pub fn get(&self, key: String) -> napi::Result<Option<JsUnknown>> {
+        Ok(self.data.get(&key).cloned())
     }
 
     #[napi]
-    pub async fn set(&self, key: String, value: JsUnknown) -> napi::Result<()> {
-        let mut store = self.data.write().await;
-        store.insert(key, value.into());
+    pub fn set(&mut self, key: String, value: JsUnknown) -> napi::Result<()> {
+        self.data.insert(key, value);
         Ok(())
     }
 
     #[napi]
-    pub async fn delete(&self, key: String) -> napi::Result<()> {
-        let mut store = self.data.write().await;
-        store.remove(&key);
+    pub fn delete(&mut self, key: String) -> napi::Result<()> {
+        self.data.remove(&key);
         Ok(())
     }
 
     #[napi]
-    pub async fn clear(&self) -> napi::Result<()> {
-        let mut store = self.data.write().await;
-        store.clear();
+    pub fn clear(&mut self) -> napi::Result<()> {
+        self.data.clear();
         Ok(())
     }
 
     #[napi]
-    pub async fn has(&self, key: String) -> napi::Result<bool> {
-        let store = self.data.read().await;
-        Ok(store.contains_key(&key))
+    pub fn has(&self, key: String) -> napi::Result<bool> {
+        Ok(self.data.contains_key(&key))
     }
 
     #[napi]
-    pub async fn keys(&self) -> napi::Result<Vec<String>> {
-        let store = self.data.read().await;
-        Ok(store.keys().cloned().collect())
+    pub fn keys(&self) -> napi::Result<Vec<String>> {
+        Ok(self.data.keys().cloned().collect())
     }
 
     #[napi]
-    pub async fn values(&self) -> napi::Result<Vec<JsUnknown>> {
-        let store = self.data.read().await;
-        Ok(store.values().map(|v| v.clone().into()).collect())
+    pub fn values(&self) -> napi::Result<Vec<JsUnknown>> {
+        Ok(self.data.values().cloned().collect())
     }
 
     #[napi]
-    pub async fn entries(&self) -> napi::Result<Vec<(String, JsUnknown)>> {
-        let store = self.data.read().await;
-        Ok(store.iter().map(|(k, v)| (k.clone(), v.clone().into())).collect())
+    pub fn entries(&self) -> napi::Result<Vec<(String, JsUnknown)>> {
+        Ok(self.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     }
 
     #[napi]
-    pub async fn size(&self) -> napi::Result<u32> {
-        let store = self.data.read().await;
-        Ok(store.len() as u32)
+    pub fn size(&self) -> napi::Result<u32> {
+        Ok(self.data.len() as u32)
     }
 } 

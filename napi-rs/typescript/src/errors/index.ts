@@ -1,4 +1,4 @@
-import { ErrorResponse, Request, Response } from '../types';
+import { ErrorResponse, JsRequest as Request, JsResponse as Response } from '../types';
 
 export class RouterError extends Error {
   constructor(
@@ -137,7 +137,10 @@ export function createErrorHandler(options: {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: errorResponse,
+      body: {
+        type: 'Json',
+        content: errorResponse
+      },
     };
   };
 }

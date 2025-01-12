@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { 
   ClassDecorator, 
   MethodDecorator, 
@@ -84,7 +85,7 @@ export function query(): ParameterDecorator {
 
 export function param(name: string): ParameterDecorator {
   return (target, propertyKey, parameterIndex) => {
-    const metadata = { type: 'param', name, index: parameterIndex };
+    const metadata = { type: 'path', name, index: parameterIndex };
     Reflect.defineMetadata(PARAM_METADATA_KEY, metadata, target, propertyKey);
   };
 }

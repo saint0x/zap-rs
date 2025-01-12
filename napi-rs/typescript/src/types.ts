@@ -2,6 +2,9 @@
  * Core router types
  */
 
+import { ValidationSchema as BaseValidationSchema } from './validation';
+
+// Use the web standard Response type from lib.dom.d.ts
 export interface RouterOptions {
   basePath?: string;
   caseSensitive?: boolean;
@@ -15,165 +18,102 @@ export interface RouterOptions {
   hooks?: Hook[];
 }
 
+// Basic Types
+export interface JsRequest {
+  method: string;
+  uri: string;
+  headers: Record<string, string>;
+  body?: any;
+  params: Record<string, string>;
+  query: Record<string, string>;
+}
+
+export type ResponseBody = {
+  type: 'Json';
+  content: Record<string, unknown>;
+} | {
+  type: 'Text';
+  content: string;
+} | {
+  type: 'Binary';
+  content: Uint8Array;
+};
+
+export interface JsResponse {
+  status: number;
+  headers: Record<string, string>;
+  body?: ResponseBody;
+}
+
+// Handler Types
+export type RouteHandler = (request: JsRequest) => JsResponse | Promise<JsResponse>;
+export type ErrorHandler = (error: Error) => Promise<JsResponse>;
+export type NextFunction = () => Promise<JsResponse>;
+export type Middleware = (request: JsRequest, next: NextFunction) => Promise<JsResponse>;
+export type Hook = {
+  phase: 'before' | 'after' | 'error';
+  handler: (request: JsRequest) => Promise<void>;
+};
+
+// Router Interface
 export interface Router {
-  // Core functionality
-  registerController(controller: any): void;
-  handleRequest(request: Request): Promise<Response>;
-  handle(request: Request): Promise<Response>;
-
-  // Middleware and hooks
-  use(middleware: Middleware): void;
-  useMiddleware(middleware: Middleware): void;
-  useHook(hook: Hook): void;
-
-  // Route handlers
+  handle(request: JsRequest): Promise<JsResponse>;
   get(path: string, handler: RouteHandler): void;
   post(path: string, handler: RouteHandler): void;
   put(path: string, handler: RouteHandler): void;
   delete(path: string, handler: RouteHandler): void;
-  patch(path: string, handler: RouteHandler): void;
-  options(path: string, handler: RouteHandler): void;
-  head(path: string, handler: RouteHandler): void;
-
-  // Error handling and logging
-  setErrorHandler(handler: (error: ZapError) => Promise<Response>): void;
-  setLogger(logger: (level: string, message: string) => void): void;
 }
 
+// Error Types
 export interface ZapError {
   code: string;
-  message: string;
-  details?: Record<string, unknown>;
+  details?: any;
 }
 
-export interface Request {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body?: string | Record<string, unknown>;
-  path?: string;
-  query?: Record<string, string>;
-  params?: Record<string, string>;
-  user?: any;
-  ip?: string;
-  context?: RequestContext;
-}
-
-export interface Response {
-  status: number;
-  headers: Record<string, string>;
-  body?: string | Record<string, unknown> | ErrorResponse;
-}
-
-export interface ZapError {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-}
-
+// Context Types
 export interface RequestContext {
-  id: string;
-  timestamp: number;
-  metadata: Record<string, unknown>;
-  state: Map<string, unknown>;
+  request: JsRequest;
+  response?: JsResponse;
+  error?: ZapError;
 }
 
-export interface RouteParams {
-  pathParams: Record<string, string>;
-  queryParams: Record<string, string>;
+// Type Guards
+export function isJsonResponse(body: ResponseBody): body is { type: 'Json'; content: Record<string, unknown> } {
+  return body.type === 'Json';
 }
 
-export interface ControllerMetadata {
-  path: string;
+export function isTextResponse(body: ResponseBody): body is { type: 'Text'; content: string } {
+  return body.type === 'Text';
 }
 
-export interface RouteMetadata {
-  method: string;
-  path: string;
+export function isBinaryResponse(body: ResponseBody): body is { type: 'Binary'; content: Uint8Array } {
+  return body.type === 'Binary';
 }
 
-export interface Store {
-  set<T>(key: string, value: T): Promise<void>;
-  get<T>(key: string): Promise<T | null>;
-  delete(key: string): Promise<void>;
-  clear(): Promise<void>;
-}
-
-export interface Hooks {
-  addPreRouting(handler: (request: Request) => Promise<Request>): void;
-  addPostHandler(handler: (response: Response) => Promise<Response>): void;
-  addErrorHandler(handler: (error: ZapError) => Promise<Response>): void;
-}
-
-export type RouteHandler = (request: Request) => Promise<Response>;
-export type Middleware = (request: Request, next: () => Promise<Response>) => Promise<Response>;
-export type Hook = {
-  phase: 'before' | 'after' | 'error';
-  handler: (request: Request) => Promise<void>;
-};
-
-export interface RouteInfo {
-  handler: RouteHandler;
-  params: Record<string, string>;
-}
-
-/**
- * Validation types
- */
-export interface ValidationSchema {
-  type: 'object' | 'array' | 'string' | 'number' | 'boolean';
-  properties?: Record<string, ValidationSchema>;
-  items?: ValidationSchema;
-  required?: string[];
-  pattern?: string;
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-}
-
-export interface ValidationOptions {
-  abortEarly?: boolean;
-  allowUnknown?: boolean;
-  stripUnknown?: boolean;
-}
-
-export class ValidationError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string = 'VALIDATION_ERROR',
-    public readonly statusCode: number = 400,
-    public readonly details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'ValidationError';
+export function parseResponseBody<T>(response: JsResponse): T | undefined {
+  if (!response.body) {
+    return undefined;
   }
 
-  toResponse(): Response {
-    return {
-      status: this.statusCode,
-      headers: { 'content-type': 'application/json' },
-      body: {
-        error: {
-          code: this.code,
-          message: this.message,
-          details: this.details
-        }
-      }
-    };
+  switch (response.body.type) {
+    case 'Text':
+      return response.body.content as unknown as T;
+    case 'Json':
+      return response.body.content as T;
+    case 'Binary':
+      return response.body.content as unknown as T;
+    default:
+      return undefined;
   }
 }
 
-/**
- * Logging types
- */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
-  debug(message: string, meta?: Record<string, unknown>): void;
-  info(message: string, meta?: Record<string, unknown>): void;
-  warn(message: string, meta?: Record<string, unknown>): void;
-  error(message: string, meta?: Record<string, unknown>): void;
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string, error?: Error): void;
 }
 
 export interface LoggerOptions {
@@ -184,21 +124,13 @@ export interface LoggerOptions {
 }
 
 export interface LogEntry {
-  level: LogLevel;
-  message: string;
   timestamp: number;
-  method?: string;
-  path?: string;
-  status?: number;
-  duration?: number;
-  name?: string;
-  stack?: string;
+  level: string;
+  message: string;
+  error?: Error;
   [key: string]: unknown;
 }
 
-/**
- * CORS types
- */
 export interface CorsOptions {
   origin?: string | string[];
   methods?: string[];
@@ -209,31 +141,13 @@ export interface CorsOptions {
   optionsSuccessStatus?: number;
 }
 
-/**
- * Controller and Route Metadata types
- */
-export interface ControllerMetadata {
-  path: string;
-  middlewares?: Middleware[];
-  hooks?: Hook[];
-  options?: Record<string, unknown>;
-}
-
-export interface RouteMetadata {
-  path: string;
-  method: string;
-  middlewares?: Middleware[];
-  hooks?: Hook[];
-  validation?: ValidationSchema;
-  options?: Record<string, unknown>;
-}
-
 export interface ErrorResponse {
   error: {
     code: string;
     message: string;
     details?: Record<string, unknown>;
   };
+  [key: string]: unknown;
 }
 
 export class RouterError extends Error {
@@ -247,13 +161,135 @@ export class RouterError extends Error {
     this.name = 'RouterError';
   }
 
-  toResponse(): ErrorResponse {
+  toResponse(): JsResponse {
     return {
-      error: {
-        code: this.code,
-        message: this.message,
-        details: this.details
+      status: this.statusCode,
+      headers: { 'content-type': 'application/json' },
+      body: {
+        type: 'Json',
+        content: {
+          error: {
+            code: this.code,
+            message: this.message,
+            details: this.details
+          }
+        }
       }
     };
   }
+}
+
+// Metadata types
+export interface ParamMetadata {
+  index: number;
+  type: 'body' | 'query' | 'path' | 'header';
+  name?: string;
+}
+
+export interface RouteMetadata {
+  path: string;
+  method: string;
+  handler: Function;
+  params: ParamMetadata[];
+  middlewares?: string[];
+  hooks?: string[];
+}
+
+export interface ControllerMetadata {
+  path: string;
+  routes: RouteMetadata[];
+  middlewares?: string[];
+}
+
+// HTTP Types
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+export type StatusCode = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500;
+
+// Request/Response Types
+export interface RequestContext {
+    params: Record<string, string>;
+    query: Record<string, string>;
+    headers: Record<string, string>;
+    body: unknown;
+}
+
+export interface ResponseContext<T = unknown> {
+    status?: StatusCode;
+    headers?: Record<string, string>;
+    body?: T;
+}
+
+// Parameter Extraction
+export type ExtractRouteParams<T extends string> = string extends T 
+    ? Record<string, string>
+    : T extends `${infer Start}:${infer Param}/${infer Rest}`
+    ? { [K in Param | keyof ExtractRouteParams<Rest>]: string }
+    : T extends `${infer Start}:${infer Param}`
+    ? { [K in Param]: string }
+    : {};
+
+// Metadata Types
+export interface MetadataParam {
+    index: number;
+    type: 'body' | 'query' | 'path' | 'header';
+    name?: string;
+}
+
+export interface RouteMetadata {
+    path: string;
+    method: string;
+    handler: Function;
+    params: MetadataParam[];
+    middlewares?: string[];
+    hooks?: string[];
+}
+
+export interface ControllerMetadata {
+    path: string;
+    routes: RouteMetadata[];
+    middlewares?: string[];
+}
+
+// Decorator Types
+export type ClassDecorator = <T extends { new (...args: any[]): {} }>(target: T) => T;
+export type MethodDecorator = (target: any, propertyKey: string, descriptor: PropertyDescriptor) => PropertyDescriptor;
+export type ParameterDecorator = (target: any, propertyKey: string, parameterIndex: number) => void;
+
+export interface DecoratorContext {
+    target: any;
+    propertyKey?: string;
+    descriptor?: PropertyDescriptor;
+    parameterIndex?: number;
+}
+
+export type ControllerDecorator = (path: string) => ClassDecorator;
+export type RouteDecorator = (path: string) => MethodDecorator;
+export type ParamDecorator = (name?: string) => ParameterDecorator;
+
+// Native Bindings
+export interface NativeBindings {
+    // Store
+    set(key: string, value: unknown): Promise<void>;
+    get(key: string): Promise<unknown>;
+    delete(key: string): Promise<void>;
+    clear(): Promise<void>;
+    has(key: string): Promise<boolean>;
+
+    // Router
+    register_route(path: string, handler: Function): Promise<void>;
+    handle_request(path: string, request: unknown): Promise<void>;
+    remove_route(path: string): Promise<void>;
+    clear_routes(): Promise<void>;
+
+    // Metadata
+    register_controller(name: string, basePath: string): Promise<void>;
+    register_route_metadata(
+        controller: string,
+        route: string,
+        method: string,
+        handler: Function,
+        params: MetadataParam[]
+    ): Promise<void>;
+    get_route_metadata(controller: string, route: string): Promise<RouteMetadata | null>;
+    get_controller_metadata(controller: string): Promise<ControllerMetadata | null>;
 } 

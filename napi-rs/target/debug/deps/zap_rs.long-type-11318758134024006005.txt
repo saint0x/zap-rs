@@ -1,1 +1,0 @@
-Arc<(dyn Fn(hyper::Request<Body>) -> Pin<Box<(dyn Future<Output = Result<Response<Body>, error::Error>> + Send + 'static)>> + Send + Sync + 'static)>

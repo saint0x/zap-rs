@@ -1,40 +1,44 @@
-use std::sync::Arc;
-use std::net::SocketAddr;
-use hyper::{Body, Response};
-use zap_rs::middleware::MiddlewareChain;
-use zap_rs::hooks::Hooks;
+use napi_derive::napi;
+use napi::bindgen_prelude::*;
+use std::collections::HashMap;
 
-#[tokio::main]
-async fn main() {
-    // Create a new router
-    let mut router = zap_rs::Router::new();
+#[napi]
+fn main() -> napi::Result<()> {
+    // Store example
+    crate::set("key1".to_string(), "value1".into())?;
+    let value = crate::get("key1".to_string())?;
+    println!("Value: {:?}", value);
 
-    // Add a simple route
-    router.get("/", |_req| async {
-        Ok(Response::new(Body::from("Hello, World!")))
-    }).unwrap();
+    // Router example
+    crate::register_route("/hello".to_string(), |ctx| {
+        println!("Request received: {:?}", ctx);
+        Ok(())
+    })?;
 
-    // Add middleware
-    let mut chain = MiddlewareChain::new();
-    chain.add(Arc::new(|req, next| {
-        Box::pin(async move {
-            println!("Request to: {}", req.uri());
-            next(req).await
-        })
-    }));
-    router.with_middleware(Arc::new(chain));
+    // Create a sample request
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
+    
+    let request = serde_json::json!({
+        "method": "GET",
+        "path": "/hello",
+        "headers": headers,
+        "body": "Hello World"
+    });
 
-    // Add hooks
-    let mut hooks = Hooks::new();
-    hooks.add_pre_routing(Box::new(|req| {
-        Box::pin(async move {
-            println!("Pre-routing hook");
-            Ok(req)
-        })
-    }));
-    router.with_hooks(Arc::new(hooks));
+    // Handle request
+    crate::handle_request("/hello".to_string(), request.into())?;
 
-    // Start the server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("Server running on http://{}", addr);
+    // Hooks example
+    crate::register_before("/hello".to_string(), |ctx| {
+        println!("Before hook: {:?}", ctx);
+        Ok(())
+    })?;
+
+    crate::register_after("/hello".to_string(), |ctx| {
+        println!("After hook: {:?}", ctx);
+        Ok(())
+    })?;
+
+    Ok(())
 } 

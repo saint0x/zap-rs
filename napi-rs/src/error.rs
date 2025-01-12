@@ -1,14 +1,14 @@
+use napi::Error as NapiError;
 use napi_derive::napi;
 use std::fmt;
 
 #[napi]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ErrorKind {
     NotFound,
     BadRequest,
-    Unauthorized,
-    Forbidden,
-    InternalServerError,
+    ValidationError,
+    InternalError,
 }
 
 impl fmt::Display for ErrorKind {
@@ -16,47 +16,18 @@ impl fmt::Display for ErrorKind {
         match self {
             ErrorKind::NotFound => write!(f, "Not Found"),
             ErrorKind::BadRequest => write!(f, "Bad Request"),
-            ErrorKind::Unauthorized => write!(f, "Unauthorized"),
-            ErrorKind::Forbidden => write!(f, "Forbidden"),
-            ErrorKind::InternalServerError => write!(f, "Internal Server Error"),
+            ErrorKind::ValidationError => write!(f, "Validation Error"),
+            ErrorKind::InternalError => write!(f, "Internal Error"),
         }
     }
 }
 
 #[napi]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ZapError {
     pub kind: ErrorKind,
     pub message: String,
-}
-
-impl ZapError {
-    pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-        }
-    }
-
-    pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::NotFound, message)
-    }
-
-    pub fn bad_request(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::BadRequest, message)
-    }
-
-    pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::Unauthorized, message)
-    }
-
-    pub fn forbidden(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::Forbidden, message)
-    }
-
-    pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(ErrorKind::InternalServerError, message)
-    }
+    pub details: Option<String>,
 }
 
 impl fmt::Display for ZapError {
@@ -65,10 +36,48 @@ impl fmt::Display for ZapError {
     }
 }
 
-impl std::error::Error for ZapError {}
+impl ZapError {
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::NotFound,
+            message: message.into(),
+            details: None,
+        }
+    }
 
-impl From<ZapError> for napi::Error {
+    pub fn bad_request(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::BadRequest,
+            message: message.into(),
+            details: None,
+        }
+    }
+
+    pub fn validation_error(message: impl Into<String>, details: Option<String>) -> Self {
+        Self {
+            kind: ErrorKind::ValidationError,
+            message: message.into(),
+            details,
+        }
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::InternalError,
+            message: message.into(),
+            details: None,
+        }
+    }
+}
+
+impl From<NapiError> for ZapError {
+    fn from(error: NapiError) -> Self {
+        Self::internal(error.to_string())
+    }
+}
+
+impl From<ZapError> for NapiError {
     fn from(error: ZapError) -> Self {
-        napi::Error::from_reason(error.to_string())
+        NapiError::from_reason(error.to_string())
     }
 } 

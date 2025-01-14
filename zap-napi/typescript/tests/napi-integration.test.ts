@@ -1,80 +1,161 @@
-import { createRouter } from '../src/bindings';
+import { Router } from '../src/router';
 import { JsRequest, JsResponse } from '../src/types';
 
 describe('Router Integration Tests', () => {
-  it('should handle GET requests', async () => {
-    const router = createRouter();
-    
+  let router: Router;
+
+  beforeEach(() => {
+    router = new Router();
+  });
+
+  test('basic route handling', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      status: 200,
+      headers: {},
+      body: { message: 'success' }
+    });
+
+    await router.get('/test', handler);
+
     const request: JsRequest = {
       method: 'GET',
       uri: '/test',
       headers: {},
-      body: undefined,
+      body: null,
       params: {},
-      query: {},
+      query: {}
     };
-
-    router.get('/test', (req: JsRequest): JsResponse => {
-      expect(req.method).toBe('GET');
-      expect(req.uri).toBe('/test');
-      
-      return {
-        status: 200,
-        headers: {},
-        body: {
-          type: 'Text',
-          content: 'Success'
-        }
-      };
-    });
 
     const response = await router.handle(request);
     expect(response.status).toBe(200);
-    expect(response.body?.type).toBe('Text');
-    expect(response.body?.content).toBe('Success');
+    expect(response.body).toEqual({ message: 'success' });
+    expect(handler).toHaveBeenCalledWith(request);
   });
 
-  it('should handle async handlers', async () => {
-    const router = createRouter();
-    
+  test('route with parameters', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      status: 200,
+      headers: {},
+      body: { id: '123' }
+    });
+
+    await router.get('/users/:id', handler);
+
     const request: JsRequest = {
       method: 'GET',
-      uri: '/async',
+      uri: '/users/123',
       headers: {},
-      body: undefined,
+      body: null,
       params: {},
-      query: {},
+      query: {}
     };
-
-    router.get('/async', async (req: JsRequest): Promise<JsResponse> => {
-      return {
-        status: 200,
-        headers: {},
-        body: {
-          type: 'Text',
-          content: 'Async Success'
-        }
-      };
-    });
 
     const response = await router.handle(request);
     expect(response.status).toBe(200);
-    expect(response.body?.content).toBe('Async Success');
+    expect(response.body).toEqual({ id: '123' });
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      params: { id: '123' }
+    }));
   });
 
-  it('should handle 404 for unknown routes', async () => {
-    const router = createRouter();
-    
+  test('middleware execution', async () => {
+    const middleware = jest.fn().mockImplementation(async (req, next) => {
+      req.headers['x-middleware'] = 'executed';
+      await next();
+    });
+
+    const handler = jest.fn().mockImplementation(async (req) => ({
+      status: 200,
+      headers: {},
+      body: { middlewareHeader: req.headers['x-middleware'] }
+    }));
+
+    const middlewareId = await router.registerMiddleware(middleware);
+    await router.get('/protected', handler, {
+      middleware: [middlewareId]
+    });
+
     const request: JsRequest = {
       method: 'GET',
-      uri: '/unknown',
+      uri: '/protected',
       headers: {},
-      body: undefined,
+      body: null,
       params: {},
-      query: {},
+      query: {}
     };
 
     const response = await router.handle(request);
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ middlewareHeader: 'executed' });
+    expect(middleware).toHaveBeenCalled();
+  });
+
+  test('guard protection', async () => {
+    const guard = jest.fn().mockResolvedValue(false);
+    const handler = jest.fn();
+
+    const guardId = await router.registerMiddleware(async (req) => {
+      const allowed = await guard(req);
+      if (!allowed) throw new Error('Access denied');
+    });
+
+    await router.get('/admin', handler, {
+      guards: [guardId]
+    });
+
+    const request: JsRequest = {
+      method: 'GET',
+      uri: '/admin',
+      headers: {},
+      body: null,
+      params: {},
+      query: {}
+    };
+
+    await expect(router.handle(request)).rejects.toThrow('Access denied');
+    expect(guard).toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test('validation and transform', async () => {
+    const validation = jest.fn().mockImplementation(async (data) => ({
+      ...data,
+      validated: true
+    }));
+
+    const transform = jest.fn().mockImplementation(async (data) => ({
+      ...data,
+      transformed: true
+    }));
+
+    const handler = jest.fn().mockImplementation(async (req) => ({
+      status: 200,
+      headers: {},
+      body: req.body
+    }));
+
+    await router.post('/data', handler, {
+      validation: validation,
+      transform: transform
+    });
+
+    const request: JsRequest = {
+      method: 'POST',
+      uri: '/data',
+      headers: {},
+      body: { original: true },
+      params: {},
+      query: {}
+    };
+
+    const response = await router.handle(request);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      original: true,
+      validated: true,
+      transformed: true
+    });
+    expect(validation).toHaveBeenCalled();
+    expect(transform).toHaveBeenCalled();
   });
 }); 

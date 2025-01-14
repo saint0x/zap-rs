@@ -310,6 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { Router } = nativeBinding
+const { Router, Hooks, getVersion } = nativeBinding
 
 module.exports.Router = Router
+module.exports.Hooks = Hooks
+module.exports.getVersion = getVersion

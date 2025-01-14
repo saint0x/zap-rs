@@ -1,5 +1,10 @@
 use super::*;
 use tokio::test;
+use napi::{JsFunction, JsObject, Env};
+use std::collections::HashMap;
+use serde_json;
+use napi::bindgen_prelude::*;
+use crate::{Router, Hooks, RouteConfig};
 
 #[test]
 async fn test_path_parameters() {
@@ -136,10 +141,134 @@ async fn test_validation() {
     assert_eq!(response.status, 200);
 }
 
+#[test]
+fn test_router_with_params() {
+    let hooks = Hooks::new();
+    let router = Router::new(&hooks);
+
+    // Register routes with parameters
+    let user_id = router.register("GET".into(), "/users/:id".into(), None).unwrap();
+    let post_id = router.register("GET".into(), "/posts/:id/comments/:commentId".into(), None).unwrap();
+    let wildcard = router.register("GET".into(), "/files/*".into(), None).unwrap();
+
+    // Test simple parameter matching
+    let (handler_id, params, _) = router.get_handler_info("GET".into(), "/users/123".into())
+        .unwrap()
+        .expect("Should match user route");
+    assert_eq!(handler_id, user_id);
+    assert_eq!(params.params.get("id").unwrap(), "123");
+
+    // Test multiple parameters
+    let (handler_id, params, _) = router.get_handler_info("GET".into(), "/posts/456/comments/789".into())
+        .unwrap()
+        .expect("Should match post route");
+    assert_eq!(handler_id, post_id);
+    assert_eq!(params.params.get("id").unwrap(), "456");
+    assert_eq!(params.params.get("commentId").unwrap(), "789");
+
+    // Test wildcard matching
+    let (handler_id, params, _) = router.get_handler_info("GET".into(), "/files/path/to/file.txt".into())
+        .unwrap()
+        .expect("Should match wildcard route");
+    assert_eq!(handler_id, wildcard);
+    assert_eq!(params.params.get("*").unwrap(), "path/to/file.txt");
+}
+
+#[test]
+fn test_middleware_and_guards() -> Result<()> {
+    let env = &mut unsafe { napi::Env::from_raw(std::ptr::null_mut()) };
+    let hooks = Hooks::new();
+    let router = Router::new(&hooks);
+
+    // Create dummy middleware functions
+    let auth_middleware = env.create_function_from_closure("auth", |_ctx| Ok(()))?;
+    let logging_middleware = env.create_function_from_closure("logging", |_ctx| Ok(()))?;
+    let admin_guard = env.create_function_from_closure("admin", |_ctx| Ok(()))?;
+
+    // Register middleware
+    let auth_id = router.register_middleware(*env, auth_middleware)?;
+    let logging_id = router.register_middleware(*env, logging_middleware)?;
+    let admin_id = router.register_middleware(*env, admin_guard)?;
+
+    // Create route with middleware and guards
+    let config = RouteConfig {
+        middleware: Some(vec![auth_id, logging_id]),
+        guards: Some(vec![admin_id]),
+        validation: None,
+        transform: None,
+    };
+
+    let handler_id = router.register("GET".into(), "/admin/dashboard".into(), Some(config))?;
+
+    // Verify middleware chain
+    let middleware_chain = router.get_middleware_chain(handler_id)
+        .expect("Should have middleware");
+    assert_eq!(middleware_chain.len(), 2);
+
+    // Verify guards
+    let guards = router.get_guards(handler_id)
+        .expect("Should have guards");
+    assert_eq!(guards.len(), 1);
+
+    Ok(())
+}
+
+#[test]
+fn test_validation_and_transform() -> Result<()> {
+    let env = &mut unsafe { napi::Env::from_raw(std::ptr::null_mut()) };
+    let hooks = Hooks::new();
+    let router = Router::new(&hooks);
+
+    // Create dummy validation and transform functions
+    let validation = env.create_function_from_closure("validate", |_ctx| Ok(()))?;
+    let transform = env.create_function_from_closure("transform", |_ctx| Ok(()))?;
+
+    // Create route with validation and transform
+    let config = RouteConfig {
+        middleware: None,
+        guards: None,
+        validation: Some(validation),
+        transform: Some(transform),
+    };
+
+    let handler_id = router.register("POST".into(), "/users".into(), Some(config))?;
+
+    // Verify validation
+    let validation = router.get_validation(handler_id)
+        .expect("Should have validation");
+    assert!(validation.is_function());
+
+    // Verify transform
+    let transform = router.get_transform(handler_id)
+        .expect("Should have transform");
+    assert!(transform.is_function());
+
+    Ok(())
+}
+
 // Helper functions
-fn create_test_handler() -> ThreadsafeFunction<JsRequest> {
-    // Implementation depends on your test setup
-    unimplemented!()
+fn create_test_handler() -> JsFunction {
+    let env = unsafe { napi::Env::from_raw(napi::sys::napi_get_current_env()) };
+    let js_func = env.create_function(
+        "testHandler",
+        |ctx| {
+            let env = ctx.env;
+            let request = ctx.get::<JsObject>(0)?;
+            
+            let response = JsResponse {
+                status: 200,
+                headers: HashMap::new(),
+                body: Some(serde_json::json!({
+                    "type": "Text",
+                    "content": "Test Success"
+                }).to_string()),
+            };
+            
+            Ok(response.to_object(env)?)
+        }
+    ).unwrap();
+    
+    js_func
 }
 
 fn create_test_middleware(

@@ -23,9 +23,9 @@ export interface JsRequest {
   method: string;
   uri: string;
   headers: Record<string, string>;
-  body?: any;
-  params: Record<string, string>;
-  query: Record<string, string>;
+  body: any;
+  params?: Record<string, string>;
+  query?: Record<string, string>;
 }
 
 export type ResponseBody = {
@@ -42,14 +42,15 @@ export type ResponseBody = {
 export interface JsResponse {
   status: number;
   headers: Record<string, string>;
-  body?: ResponseBody;
+  body: any;
+  redirect?: string;
 }
 
 // Handler Types
-export type RouteHandler = (request: JsRequest) => JsResponse | Promise<JsResponse>;
+export type RouteHandler = (request: JsRequest) => Promise<JsResponse>;
 export type ErrorHandler = (error: Error) => Promise<JsResponse>;
 export type NextFunction = () => Promise<JsResponse>;
-export type Middleware = (request: JsRequest, next: NextFunction) => Promise<JsResponse>;
+export type Middleware = (request: JsRequest, next: () => Promise<void>) => Promise<void>;
 export type Hook = {
   phase: 'before' | 'after' | 'error';
   handler: (request: JsRequest) => Promise<void>;
@@ -62,6 +63,9 @@ export interface Router {
   post(path: string, handler: RouteHandler): void;
   put(path: string, handler: RouteHandler): void;
   delete(path: string, handler: RouteHandler): void;
+  pre(hook: (req: JsRequest) => Promise<JsRequest> | JsRequest): void;
+  postHook(hook: (res: JsResponse) => Promise<JsResponse> | JsResponse): void;
+  error(hook: (err: Error) => Promise<JsResponse> | JsResponse): void;
 }
 
 // Error Types
@@ -107,13 +111,18 @@ export function parseResponseBody<T>(response: JsResponse): T | undefined {
   }
 }
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export enum LogLevel {
+  Debug = 'debug',
+  Info = 'info',
+  Warn = 'warn',
+  Error = 'error'
+}
 
 export interface Logger {
-  debug(message: string): void;
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string, error?: Error): void;
+  debug(message: string, ...args: any[]): void;
+  info(message: string, ...args: any[]): void;
+  warn(message: string, ...args: any[]): void;
+  error(message: string, ...args: any[]): void;
 }
 
 export interface LoggerOptions {
@@ -292,4 +301,21 @@ export interface NativeBindings {
     ): Promise<void>;
     get_route_metadata(controller: string, route: string): Promise<RouteMetadata | null>;
     get_controller_metadata(controller: string): Promise<ControllerMetadata | null>;
+}
+
+export type Guard = (request: JsRequest) => Promise<boolean>;
+export type ValidationFn = (data: any) => Promise<any>;
+export type TransformFn = (data: any) => Promise<any>;
+
+export interface HandlerInfo {
+  id: number;
+  params: Record<string, string>;
+}
+
+// This interface matches the native RouteConfig from zap-napi
+export interface RouteConfig {
+  guards?: number[];
+  middleware?: number[];
+  validation?: number;
+  transform?: number;
 } 

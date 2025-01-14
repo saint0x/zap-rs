@@ -83,24 +83,28 @@ beforeEach(() => {
 });
 
 // Mock the native module
+const mockModule = {
+    Router: jest.fn().mockImplementation(() => ({
+        getHandlerId: jest.fn().mockImplementation((method, path) => {
+            const key = `${method} ${path}`;
+            return mocks.router.routes.has(key) ? key : null;
+        }),
+        register: jest.fn().mockImplementation((method, path) => {
+            const key = `${method} ${path}`;
+            mocks.router.routes.set(key, jest.fn());
+            return key;
+        })
+    })),
+    Hooks: jest.fn().mockImplementation(() => ({
+        register_pre_routing: jest.fn().mockResolvedValue(1),
+        register_post_handler: jest.fn().mockResolvedValue(2),
+        register_error_handler: jest.fn().mockResolvedValue(3)
+    }))
+};
+
 jest.mock('../src/native', () => ({
     __esModule: true,
-    default: {
-        JsRouter: jest.fn().mockImplementation(() => ({
-            handle: async (request: JsRequest): Promise<JsResponse> => {
-                return mocks.router.handleRequest(request);
-            },
-            addRoute: (method: string, path: string, handler: (req: JsRequest) => Promise<JsResponse>) => {
-                return mocks.router.addRoute(method, path, handler);
-            },
-            addMiddleware: (handler: Function) => {
-                return mocks.router.addMiddleware(handler);
-            }
-        })),
-        JsError: jest.fn().mockImplementation((code: number, message: string, details?: string) => ({
-            code,
-            message,
-            details
-        }))
-    }
+    default: mockModule,
+    Router: mockModule.Router,
+    Hooks: mockModule.Hooks
 })); 

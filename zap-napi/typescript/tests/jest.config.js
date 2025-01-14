@@ -4,16 +4,17 @@ module.exports = {
   roots: ['<rootDir>'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'js'],
+  moduleFileExtensions: ['ts', 'js', 'node'],
   transform: {
-    '^.+\\.ts$': 'ts-jest'
-  },
-  globals: {
-    'ts-jest': {
+    '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
         experimentalDecorators: true,
         emitDecoratorMetadata: true
       }
-    }
+    }]
+  },
+  moduleNameMapper: {
+    '^../src/native$': '<rootDir>/../bindings',
+    '\\.node$': '<rootDir>/../bindings'
   }
 }; 

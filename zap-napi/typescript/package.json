@@ -14,11 +14,12 @@
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
     "prepare": "npm run build",
-    "test": "jest",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "docs": "typedoc src/index.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "pretest": "npm run build && cp ../index.node dist/",
+    "test": "jest"
   },
   "keywords": [
     "web",
@@ -41,11 +42,11 @@
   },
   "homepage": "https://github.com/zap-rs/zap#readme",
   "dependencies": {
-    "reflect-metadata": "^0.1.14"
+    "reflect-metadata": "^0.1.14",
+    "@types/node": "^20.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
-    "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",

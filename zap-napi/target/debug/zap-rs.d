@@ -1,1 +1,1 @@
-/Users/saint/Desktop/zap-rs/napi-rs/target/debug/zap-rs: /Users/saint/Desktop/zap-rs/napi-rs/build.rs /Users/saint/Desktop/zap-rs/napi-rs/src/main.rs
+/Users/saint/Desktop/zap-rs/zap-napi/target/debug/zap-rs: /Users/saint/Desktop/zap-rs/zap-napi/build.rs /Users/saint/Desktop/zap-rs/zap-napi/src/main.rs

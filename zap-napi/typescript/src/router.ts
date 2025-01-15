@@ -1,5 +1,5 @@
 import { Router as NativeRouter, Hooks, RouteConfig, HandlerInfo } from 'zap-napi';
-import { JsRequest, JsResponse, RouteHandler, Middleware, Guard, ValidationFn, TransformFn } from './types';
+import { JsRequest, JsResponse, RouteHandler, Middleware } from './types';
 
 export class Router {
   private nativeRouter: NativeRouter;
@@ -57,7 +57,7 @@ export class Router {
     if (guards) {
       for (const guardFn of guards) {
         // Cast the guard function to match our Guard type
-        const guard = guardFn as unknown as Guard;
+        const guard = guardFn as unknown as (req: JsRequest) => Promise<boolean>;
         const allowed = await guard(request);
         if (!allowed) {
           throw new Error('Access denied by guard');
@@ -96,7 +96,7 @@ export class Router {
     // Store middleware ID for later use in route configuration
   }
 
-  async guard(guard: Guard): Promise<void> {
+  async guard(guard: (req: JsRequest) => Promise<boolean>): Promise<void> {
     const adaptedGuard = async (ctx: any) => {
       const allowed = await guard(ctx);
       if (!allowed) {
@@ -107,11 +107,11 @@ export class Router {
     // Store guard ID for later use in route configuration
   }
 
-  async validate(validation: ValidationFn): Promise<void> {
+  async validate(validation: (data: any) => Promise<any>): Promise<void> {
     // Store validation function for later use in route configuration
   }
 
-  async transform(transform: TransformFn): Promise<void> {
+  async transform(transform: (data: any) => Promise<any>): Promise<void> {
     // Store transform function for later use in route configuration
   }
 } 

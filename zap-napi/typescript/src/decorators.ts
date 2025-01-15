@@ -2,31 +2,35 @@ import { Router } from './router';
 import { RouteHandler, Guard as GuardFn, Middleware, ValidationFn, TransformFn } from './types';
 import { RouteConfig } from 'zap-napi';
 
+// Type definitions for decorators
+type ClassDecorator = <T extends { new (...args: any[]): any }>(target: T) => T;
+type MethodDecorator = <T>(target: Object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T> | void;
+
 export namespace zap {
-  export function controller(path: string = '/') {
+  export function controller(path: string = '/'): ClassDecorator {
     return function(target: any) {
       return target;
     };
   }
 
-  export function get(path: string, config?: RouteConfig) {
+  export function get(path: string, config?: RouteConfig): MethodDecorator {
     return createMethodDecorator('GET', path, config);
   }
 
-  export function post(path: string, config?: RouteConfig) {
+  export function post(path: string, config?: RouteConfig): MethodDecorator {
     return createMethodDecorator('POST', path, config);
   }
 
-  export function put(path: string, config?: RouteConfig) {
+  export function put(path: string, config?: RouteConfig): MethodDecorator {
     return createMethodDecorator('PUT', path, config);
   }
 
-  export function del(path: string, config?: RouteConfig) {
+  export function del(path: string, config?: RouteConfig): MethodDecorator {
     return createMethodDecorator('DELETE', path, config);
   }
 
-  export function use(middleware: Middleware) {
-    return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  export function use(middleware: Middleware): MethodDecorator {
+    return function(target: any, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<any>) {
       const originalMethod = descriptor.value;
       descriptor.value = async function(...args: any[]) {
         const router = (this as any).router as Router;
@@ -41,8 +45,8 @@ export namespace zap {
     };
   }
 
-  export function guard(guardFn: GuardFn) {
-    return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  export function guard(guardFn: GuardFn): MethodDecorator {
+    return function(target: any, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<any>) {
       const originalMethod = descriptor.value;
       descriptor.value = async function(...args: any[]) {
         const router = (this as any).router as Router;
@@ -62,8 +66,8 @@ export namespace zap {
     };
   }
 
-  export function validate(validation: ValidationFn) {
-    return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  export function validate(validation: ValidationFn): MethodDecorator {
+    return function(target: any, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<any>) {
       const originalMethod = descriptor.value;
       descriptor.value = async function(...args: any[]) {
         const router = (this as any).router as Router;
@@ -79,8 +83,8 @@ export namespace zap {
     };
   }
 
-  export function transform(transform: TransformFn) {
-    return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  export function transform(transform: TransformFn): MethodDecorator {
+    return function(target: any, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<any>) {
       const originalMethod = descriptor.value;
       descriptor.value = async function(...args: any[]) {
         const router = (this as any).router as Router;
@@ -97,8 +101,8 @@ export namespace zap {
   }
 }
 
-function createMethodDecorator(method: string, path: string, config?: RouteConfig) {
-  return function(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+function createMethodDecorator(method: string, path: string, config?: RouteConfig): MethodDecorator {
+  return function(target: any, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<any>) {
     const originalMethod = descriptor.value;
     descriptor.value = async function(...args: any[]) {
       const router = (this as any).router as Router;

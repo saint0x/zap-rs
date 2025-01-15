@@ -8,7 +8,7 @@ describe('Decorators', () => {
   });
 
   @zap.controller('/api')
-  class TestController {
+    class TestController {
     router: zap.Router;
 
     constructor(router: zap.Router) {

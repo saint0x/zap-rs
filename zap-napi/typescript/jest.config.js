@@ -4,12 +4,14 @@ module.exports = {
   testEnvironment: 'node',
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
-      useESM: true,
-    }],
-  },
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
-  moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
+      tsconfig: 'tsconfig.json'
+    }]
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  moduleNameMapper: {
+    '^zap-napi$': '<rootDir>/dist/index.node'
+  },
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testMatch: ['**/__tests__/**/*.+(ts|tsx|js)', '**/?(*.)+(spec|test).+(ts|tsx|js)'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js']
 }; 

@@ -24,7 +24,7 @@ export interface JsRequest {
   uri: string;
   headers: Record<string, string>;
   body: any;
-  params?: Record<string, string>;
+  params: Record<string, string>;
   query?: Record<string, string>;
 }
 
@@ -48,9 +48,10 @@ export interface JsResponse {
 
 // Handler Types
 export type RouteHandler = (request: JsRequest) => Promise<JsResponse>;
-export type ErrorHandler = (error: Error) => Promise<JsResponse>;
+export type ErrorHandler = (error: Error, request: JsRequest) => Promise<JsResponse>;
+export type RouteErrorHandler = (error: Error, request: JsRequest) => Promise<JsResponse>;
 export type NextFunction = () => Promise<JsResponse>;
-export type Middleware = (request: JsRequest, next: () => Promise<void>) => Promise<void>;
+export type Middleware = (request: JsRequest, next: () => Promise<void>) => Promise<JsResponse | void>;
 export type Hook = {
   phase: 'before' | 'after' | 'error';
   handler: (request: JsRequest) => Promise<void>;
@@ -66,6 +67,8 @@ export interface Router {
   pre(hook: (req: JsRequest) => Promise<JsRequest> | JsRequest): void;
   postHook(hook: (res: JsResponse) => Promise<JsResponse> | JsResponse): void;
   error(hook: (err: Error) => Promise<JsResponse> | JsResponse): void;
+  onError(handler: ErrorHandler): void;
+  onRouteError(path: string, handler: RouteErrorHandler): void;
 }
 
 // Error Types
@@ -111,18 +114,13 @@ export function parseResponseBody<T>(response: JsResponse): T | undefined {
   }
 }
 
-export enum LogLevel {
-  Debug = 'debug',
-  Info = 'info',
-  Warn = 'warn',
-  Error = 'error'
-}
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
-  debug(message: string, ...args: any[]): void;
-  info(message: string, ...args: any[]): void;
-  warn(message: string, ...args: any[]): void;
-  error(message: string, ...args: any[]): void;
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
 }
 
 export interface LoggerOptions {
@@ -156,7 +154,6 @@ export interface ErrorResponse {
     message: string;
     details?: Record<string, unknown>;
   };
-  [key: string]: unknown;
 }
 
 export class RouterError extends Error {
@@ -212,7 +209,7 @@ export interface ControllerMetadata {
 
 // HTTP Types
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-export type StatusCode = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500;
+export type StatusCode = 100 | 101 | 102 | 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207 | 300 | 301 | 302 | 303 | 304 | 305 | 307 | 400 | 401 | 402 | 403 | 404 | 405 | 406 | 407 | 408 | 409 | 410 | 411 | 412 | 413 | 414 | 415 | 416 | 417 | 418 | 422 | 423 | 424 | 425 | 426 | 428 | 429 | 431 | 451 | 500 | 501 | 502 | 503 | 504 | 505 | 506 | 507 | 511;
 
 // Request/Response Types
 export interface RequestContext {

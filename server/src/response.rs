@@ -1,9 +1,11 @@
 //! Response types and utilities for ZapServer
 
 use std::path::PathBuf;
+
 use bytes::Bytes;
 use serde::Serialize;
-use zap_core::{Response, StatusCode};
+
+use zap_core::{Response, StatusCode, ResponseBody};
 
 /// Zap response types with auto-serialization
 #[derive(Debug)]
@@ -79,9 +81,9 @@ impl ZapResponse {
                 }
                 
                 let body = match &response.body {
-                    zap_core::ResponseBody::Empty => String::new(),
-                    zap_core::ResponseBody::Text(text) => text.clone(),
-                    zap_core::ResponseBody::Bytes(bytes) => {
+                    ResponseBody::Empty => String::new(),
+                    ResponseBody::Text(text) => text.clone(),
+                    ResponseBody::Bytes(bytes) => {
                         String::from_utf8_lossy(bytes).to_string()
                     }
                 };

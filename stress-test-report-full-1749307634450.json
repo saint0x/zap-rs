@@ -1,0 +1,115 @@
+{
+  "testConfig": {
+    "concurrency": 50,
+    "requestsPerWorker": 100,
+    "timeoutMs": 5000,
+    "baseUrl": "http://localhost:3000",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/health",
+        "weight": 15
+      },
+      {
+        "method": "GET",
+        "path": "/api/users",
+        "weight": 20
+      },
+      {
+        "method": "GET",
+        "path": "/api/users/123",
+        "weight": 25
+      },
+      {
+        "method": "POST",
+        "path": "/api/users",
+        "payload": {
+          "name": "Test User",
+          "email": "test@example.com"
+        },
+        "weight": 10
+      },
+      {
+        "method": "PUT",
+        "path": "/api/users/123",
+        "payload": {
+          "name": "Updated User"
+        },
+        "weight": 8
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/users/123",
+        "weight": 5
+      },
+      {
+        "method": "GET",
+        "path": "/api/categories/5/products/42",
+        "weight": 15
+      },
+      {
+        "method": "POST",
+        "path": "/api/upload",
+        "payload": {
+          "file": "binary data"
+        },
+        "weight": 6
+      },
+      {
+        "method": "GET",
+        "path": "/api/search?q=test&type=product&sort=price",
+        "weight": 20
+      },
+      {
+        "method": "GET",
+        "path": "/api/analytics/stats",
+        "weight": 8
+      },
+      {
+        "method": "GET",
+        "path": "/api/users?page=2&limit=5",
+        "weight": 12
+      },
+      {
+        "method": "GET",
+        "path": "/api/search?q=performance&type=all",
+        "weight": 6
+      },
+      {
+        "method": "GET",
+        "path": "/api/metrics",
+        "weight": 10
+      }
+    ]
+  },
+  "results": {
+    "totalRequests": 5000,
+    "successfulRequests": 5000,
+    "failedRequests": 0,
+    "averageResponseTime": 29.932584640199998,
+    "minResponseTime": 4.998165999999969,
+    "maxResponseTime": 54.708292000000256,
+    "requestsPerSecond": 1478.4560308266055,
+    "totalDuration": 3381.906459,
+    "statusCodeDistribution": {
+      "200": 5000
+    },
+    "errors": []
+  },
+  "timestamp": "2025-06-07T14:47:14.450Z",
+  "runtime": "Bun",
+  "mode": "FULL",
+  "environment": {
+    "nodeVersion": "v22.6.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "memory": {
+      "rss": 48939008,
+      "heapTotal": 5059584,
+      "heapUsed": 4306720,
+      "external": 597008,
+      "arrayBuffers": 0
+    },
+    "isBun": true
+  }
+}

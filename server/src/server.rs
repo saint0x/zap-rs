@@ -21,7 +21,7 @@ use crate::error::ZapError;
 use crate::handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
 use crate::request::RequestData;
 use crate::response::{Json, ZapResponse};
-use crate::static_files::{handle_static_files, StaticHandler, StaticOptions};
+use crate::r#static::{handle_static_files, StaticHandler, StaticOptions};
 use crate::utils::convert_method;
 
 /// Main Zap server - the entry point for building high-performance web applications

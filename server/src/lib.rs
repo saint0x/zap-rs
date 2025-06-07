@@ -15,7 +15,7 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use zap_server::{Zap, Json};
+//! use server::{Zap, Json};
 //! use serde_json::json;
 //!
 //! #[tokio::main]
@@ -40,7 +40,7 @@
 //! ## Advanced Usage
 //!
 //! ```no_run
-//! use zap_server::{Zap, Json, StaticOptions};
+//! use server::{Zap, Json, StaticOptions};
 //! use serde_json::json;
 //! use std::collections::HashMap;
 //! use std::time::Duration;
@@ -90,7 +90,7 @@ pub mod handler;
 pub mod request;
 pub mod response;
 pub mod server;
-pub mod static_files;
+pub mod r#static;
 pub mod utils;
 
 // Re-export main types for convenient use
@@ -100,9 +100,9 @@ pub use handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
 pub use request::RequestData;
 pub use response::{Json, ZapResponse};
 pub use server::Zap;
-pub use static_files::{StaticHandler, StaticOptions};
+pub use r#static::{StaticHandler, StaticOptions};
 
-// Re-export important types from zap_core for convenience
+// Re-export important types from core crate for convenience
 pub use zap_core::{Method, StatusCode};
 
 #[cfg(test)]

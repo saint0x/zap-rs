@@ -264,6 +264,7 @@ impl std::error::Error for MiddlewareError {}
 /// Built-in logger middleware
 pub struct LoggerMiddleware {
     /// Log format string
+    #[allow(dead_code)]
     format: String,
 }
 
@@ -314,8 +315,10 @@ pub struct CorsMiddleware {
     /// Allowed origins
     origins: Vec<String>,
     /// Allowed methods
+    #[allow(dead_code)]
     methods: Vec<Method>,
     /// Allowed headers
+    #[allow(dead_code)]
     headers: Vec<String>,
 }
 

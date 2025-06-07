@@ -3,9 +3,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use zap_core::Request;
 use crate::error::ZapError;
 use crate::response::ZapResponse;
+use zap_core::Request;
 use crate::request::RequestData;
 
 /// Handler trait for request processing

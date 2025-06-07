@@ -17,11 +17,3 @@ bytes = { workspace = true }
 simdutf8 = { workspace = true }
 # Async runtime for middleware
 tokio = { workspace = true }
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-tokio-test = { workspace = true }
-
-[[bench]]
-name = "router"
-harness = false 

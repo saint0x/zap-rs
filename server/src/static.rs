@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-
 use zap_core::{Response, StatusCode};
 use crate::error::ZapError;
 use crate::response::ZapResponse;

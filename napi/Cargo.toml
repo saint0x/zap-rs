@@ -1,5 +1,5 @@
 [package]
-name = "zap-napi"
+name = "napi"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,8 +7,8 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-zap-core = { path = "../zap-core" }
-zap-server = { path = "../zap-server" }
+zap-core = { path = "../core" }
+server = { path = "../server" }
 napi = { version = "2.16", default-features = false, features = ["napi4", "serde-json", "tokio_rt"] }
 napi-derive = "2.16"
 tokio = { workspace = true, features = ["full"] }

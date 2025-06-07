@@ -1,10 +1,10 @@
 [package]
-name = "zap-server"
+name = "server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zap-core = { path = "../zap-core" }
+zap-core = { path = "../core" }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"

@@ -1,7 +1,7 @@
 {
   "name": "zap-rs",
-  "version": "0.1.0",
-  "description": "Ultra-fast HTTP server for Node.js - 10-100x faster than Express.js",
+  "version": "1.1.6",
+  "description": "Ultra-fast HTTP server",
   "main": "index.js",
   "types": "index.d.ts",
   "repository": {
@@ -46,11 +46,12 @@
     "typescript": "^5.0.0"
   },
   "optionalDependencies": {
-    "zap-rs-win32-x64-msvc": "0.1.0",
-    "zap-rs-darwin-x64": "0.1.0",
-    "zap-rs-darwin-arm64": "0.1.0",
-    "zap-rs-linux-x64-gnu": "0.1.0",
-    "zap-rs-linux-arm64-gnu": "0.1.0"
+    "zap-rs-win32-x64-msvc": "1.1.6",
+    "zap-rs-darwin-x64": "1.1.6",
+    "zap-rs-linux-x64-gnu": "1.1.6",
+    "zap-rs-darwin-arm64": "1.1.6",
+    "zap-rs-linux-arm64-gnu": "1.1.6",
+    "zap-rs-win32-arm64-msvc": "1.1.6"
   },
   "napi": {
     "name": "zap-napi",
@@ -63,4 +64,4 @@
       ]
     }
   }
-} 
+}

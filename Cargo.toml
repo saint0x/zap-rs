@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "zap-core",
-    "zap-server", 
-    "zap-napi"
+    "core",
+    "server", 
+    "napi"
 ]
 resolver = "2"
 

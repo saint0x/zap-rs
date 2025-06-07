@@ -1,0 +1,48 @@
+{
+  "name": "zap-rs",
+  "version": "1.1.6",
+  "description": "Ultra-fast HTTP framework written in Rust with TypeScript bindings",
+  "main": "stress-test.ts",
+  "scripts": {
+    "stress-test": "bun run stress-test.ts",
+    "stress-test:quick": "bun run stress-test.ts --quick",
+    "build": "cargo build --release",
+    "test": "cargo test && bun run stress-test:quick",
+    "dev": "bun run stress-test.ts",
+    "lint": "bun run tsc --noEmit",
+    "install-deps": "bun install"
+  },
+  "keywords": [
+    "rust",
+    "http",
+    "framework",
+    "typescript",
+    "performance",
+    "web-server",
+    "fast",
+    "napi",
+    "bun"
+  ],
+  "author": "saint0x",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saint0x/zap-rs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/saint0x/zap-rs/issues"
+  },
+  "homepage": "https://github.com/saint0x/zap-rs#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^9.4.1"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "bun": ">=1.0.0"
+  }
+} 

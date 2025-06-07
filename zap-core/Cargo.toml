@@ -1,0 +1,27 @@
+[package]
+name = "zap-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["ZapRS Team"]
+description = "Ultra-fast HTTP router core"
+license = "MIT"
+
+[dependencies]
+memchr = { workspace = true }
+ahash = { workspace = true }
+xxhash-rust = { workspace = true }
+http = { workspace = true }
+# HTTP parsing optimizations
+bytes = { workspace = true }
+# SIMD string operations
+simdutf8 = { workspace = true }
+# Async runtime for middleware
+tokio = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio-test = { workspace = true }
+
+[[bench]]
+name = "router"
+harness = false 

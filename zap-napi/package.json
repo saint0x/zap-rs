@@ -1,0 +1,66 @@
+{
+  "name": "zap-rs",
+  "version": "0.1.0",
+  "description": "Ultra-fast HTTP server for Node.js - 10-100x faster than Express.js",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saint0x/zap-rs.git"
+  },
+  "keywords": [
+    "http",
+    "server",
+    "fast",
+    "rust",
+    "typescript",
+    "express",
+    "performance",
+    "zero-allocation",
+    "simd",
+    "routing"
+  ],
+  "author": "Zap Team",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "engines": {
+    "node": ">= 16"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "node examples/basic.js",
+    "bench": "node benchmarks/express-comparison.js"
+  },
+  "dependencies": {
+    "@node-rs/helper": "^1.6.0"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "zap-rs-win32-x64-msvc": "0.1.0",
+    "zap-rs-darwin-x64": "0.1.0",
+    "zap-rs-darwin-arm64": "0.1.0",
+    "zap-rs-linux-x64-gnu": "0.1.0",
+    "zap-rs-linux-arm64-gnu": "0.1.0"
+  },
+  "napi": {
+    "name": "zap-napi",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-pc-windows-msvc"
+      ]
+    }
+  }
+} 

@@ -1,0 +1,23 @@
+[package]
+name = "zap-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zap-core = { path = "../zap-core" }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+mime = "0.3"
+mime_guess = "2.0"
+bytes = { workspace = true }
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+tower = { version = "0.4", features = ["full"] }
+tower-service = "0.3"
+pin-project-lite = "0.2"
+thiserror = "1.0"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }

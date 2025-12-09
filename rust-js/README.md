@@ -1,0 +1,3 @@
+# rust.js
+
+Reserved namespace.

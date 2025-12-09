@@ -1,8 +1,7 @@
 [workspace]
 members = [
     "core",
-    "server", 
-    "napi"
+    "server"
 ]
 resolver = "2"
 

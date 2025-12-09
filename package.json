@@ -1,16 +1,30 @@
 {
   "name": "zap-rs",
-  "version": "1.1.6",
-  "description": "Ultra-fast HTTP framework written in Rust with TypeScript bindings",
-  "main": "stress-test.ts",
+  "version": "2.0.0",
+  "description": "Ultra-fast HTTP framework written in Rust with TypeScript bindings - IPC-based architecture",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
+    "build:rust": "cargo build --release --bin zap",
+    "build:ts": "tsc",
+    "build": "npm run build:rust && npm run build:ts",
+    "dev": "bun run src/index.ts",
+    "test": "cargo test && bun test tests/",
+    "test:integration": "bun test tests/integration/",
+    "test:unit": "bun test tests/unit/",
+    "lint": "bun run tsc --noEmit",
+    "format": "prettier --write src/ server/src/",
     "stress-test": "bun run stress-test.ts",
     "stress-test:quick": "bun run stress-test.ts --quick",
-    "build": "cargo build --release",
-    "test": "cargo test && bun run stress-test:quick",
-    "dev": "bun run stress-test.ts",
-    "lint": "bun run tsc --noEmit",
-    "install-deps": "bun install"
+    "install-deps": "bun install",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "rust",
@@ -39,10 +53,11 @@
   },
   "dependencies": {
     "chalk": "^4.1.2",
-    "commander": "^9.4.1"
+    "commander": "^9.4.1",
+    "zap-rs": "^1.1.6"
   },
   "engines": {
     "node": ">=16.0.0",
     "bun": ">=1.0.0"
   }
-} 
+}

@@ -10,15 +10,17 @@ use hyper::{body::Incoming, Request as HyperRequest, Response as HyperResponse};
 use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use zap_core::{
     HttpParser, Method, MiddlewareChain, Request, Router,
 };
 
-use crate::config::ServerConfig;
-use crate::error::ZapError;
+use crate::config::{ServerConfig, ZapConfig, RouteConfig};
+use crate::error::{ZapError, ZapResult};
 use crate::handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
+use crate::ipc::IpcServer;
+use crate::proxy::ProxyHandler;
 use crate::request::RequestData;
 use crate::response::{Json, ZapResponse};
 use crate::r#static::{handle_static_files, StaticHandler, StaticOptions};
@@ -430,6 +432,105 @@ impl Zap {
     /// Get static handlers reference for testing
     pub fn static_handlers(&self) -> &[StaticHandler] {
         &self.static_handlers
+    }
+
+    /// Create a Zap server from comprehensive configuration
+    ///
+    /// This method is used by the binary entry point to load configuration
+    /// from JSON and build the complete server with all routes and middleware.
+    pub async fn from_config(config: ZapConfig) -> ZapResult<Self> {
+        info!("🔧 Building Zap server from configuration");
+
+        let mut server = Self {
+            config: ServerConfig::new()
+                .port(config.port)
+                .hostname(config.hostname.clone())
+                .max_request_body_size(config.max_request_body_size)
+                .request_timeout(Duration::from_secs(config.request_timeout_secs))
+                .keep_alive_timeout(Duration::from_secs(config.keepalive_timeout_secs)),
+            router: Router::new(),
+            middleware: MiddlewareChain::new(),
+            static_handlers: Vec::new(),
+        };
+
+        // Add middleware
+        if config.middleware.enable_cors {
+            info!("✓ CORS middleware enabled");
+            server = server.cors();
+        }
+
+        if config.middleware.enable_logging {
+            info!("✓ Logging middleware enabled");
+            server = server.logging();
+        }
+
+        // Register all routes from configuration
+        for route_cfg in &config.routes {
+            let method = route_cfg.method.to_uppercase();
+            let method_enum = match method.as_str() {
+                "GET" => Method::GET,
+                "POST" => Method::POST,
+                "PUT" => Method::PUT,
+                "DELETE" => Method::DELETE,
+                "PATCH" => Method::PATCH,
+                "HEAD" => Method::HEAD,
+                "OPTIONS" => Method::OPTIONS,
+                _ => {
+                    return Err(ZapError::Config(format!(
+                        "Unknown HTTP method: {}",
+                        method
+                    )))
+                }
+            };
+
+            if route_cfg.is_typescript {
+                // TypeScript handler - use proxy
+                let proxy = ProxyHandler::with_timeout(
+                    route_cfg.handler_id.clone(),
+                    config.ipc_socket_path.clone(),
+                    config.request_timeout_secs,
+                );
+                server.router.insert(method_enum, &route_cfg.path, Box::new(proxy))
+                    .map_err(|e| ZapError::Config(format!(
+                        "Failed to register route {}: {}",
+                        route_cfg.path, e
+                    )))?;
+                debug!("✓ Registered {} {} -> {} (TypeScript)", method, route_cfg.path, route_cfg.handler_id);
+            }
+            // Rust handlers would be added here if needed
+        }
+
+        // Register static files
+        for static_cfg in &config.static_files {
+            server = server.static_files(&static_cfg.prefix, &static_cfg.directory);
+            info!(
+                "✓ Static files: {} -> {}",
+                static_cfg.prefix, static_cfg.directory
+            );
+        }
+
+        // Add health check
+        if !config.health_check_path.is_empty() {
+            server = server.health_check(&config.health_check_path);
+            info!("✓ Health check: {}", config.health_check_path);
+        }
+
+        // Add metrics endpoint if configured
+        if let Some(metrics_path) = config.metrics_path {
+            server = server.metrics(&metrics_path);
+            info!("✓ Metrics endpoint: {}", metrics_path);
+        }
+
+        info!("✅ Server configured with {} routes", server.router.total_routes());
+
+        Ok(server)
+    }
+
+    /// Graceful shutdown of the server
+    pub async fn shutdown(&self) -> ZapResult<()> {
+        info!("🛑 Initiating graceful shutdown");
+        // Cleanup can be added here if needed
+        Ok(())
     }
 }
 

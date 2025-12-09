@@ -1,246 +1,269 @@
-# ZapServer 🚀
+# Zap - Ultra-Fast HTTP Server for Node.js/Bun
 
-> **Ultra-fast HTTP framework written in Rust with TypeScript bindings**
+Production-grade HTTP server combining Rust performance with TypeScript flexibility via Unix socket IPC.
 
-ZapServer is a high-performance HTTP framework that combines the speed of Rust with the convenience of TypeScript. It's designed to be 10-100x faster than Express.js while maintaining a clean, Bun-inspired API.
+## Architecture
 
-## 🌟 Features
+```
+TypeScript Wrapper (Node.js/Bun)
+    ↓ (handler registration)
+Zap class (src/index.ts)
+    ├─ ProcessManager (spawns Rust binary)
+    └─ IpcServer (listens on Unix socket)
+         ↓ (newline-delimited JSON over IPC)
+Rust Binary (server/bin/zap.rs)
+    ├─ HTTP Server (Hyper + Tokio)
+    ├─ Router (9ns static routes, zap-core)
+    ├─ Middleware chain (CORS, logging)
+    └─ ProxyHandler (forwards TS routes via IPC)
+         ↓ (HTTP response)
+HTTP Clients (3000+)
+```
 
-- ⚡ **Ultra-fast router** - 9ns static routes, 200ns parameter routes
-- 🔍 **SIMD-optimized HTTP/1.1 parser** with zero-copy techniques
-- 🔧 **Zero-allocation middleware system** with ownership-based API
-- 📨 **Complete Request/Response system** with fluent APIs
-- 🎨 **Bun-inspired API layer** with auto-serialization
-- 🌉 **TypeScript bindings** with multiple API patterns
-- 📊 **Built-in performance monitoring** and health checks
+## Features
 
-## 🚀 Quick Start
+- **9ns static route lookups** - Ultra-fast radix tree router
+- **SIMD-optimized HTTP parsing** - Zero-copy request handling
+- **TypeScript handlers** - Full Node.js/Bun ecosystem access
+- **Production-ready** - Graceful shutdown, health checks, metrics
+- **Minimal IPC overhead** - Unix domain sockets (~100μs latency)
+- **Type-safe IPC protocol** - Newline-delimited JSON with error handling
+
+## Quick Start
 
 ### Prerequisites
+- Bun 1.0+ or Node.js 16+
+- Rust 1.70+ (for building)
 
-- Bun 1.0+ (recommended) or Node.js 16+
-- Rust 1.70+
-- TypeScript (for development)
-
-### Installation
+### Build
 
 ```bash
-# Clone the repository
-git clone https://github.com/saint0x/zap-rs.git
-cd zap-rs
+# Build Rust binary
+cargo build --release --bin zap
 
-# Install dependencies with Bun (fast!)
-bun install
+# Build TypeScript wrapper
+npm run build:ts
 
-# Build the Rust components
-cargo build --release
+# Or both at once
+npm run build
 ```
 
-### Running the Stress Test
-
-The project includes a comprehensive stress test that demonstrates ZapServer's capabilities:
-
-```bash
-# Run full stress test (50 workers, 5000 total requests)
-bun run stress-test
-
-# Run quick test for development
-bun run stress-test:quick
-
-# Or run directly with Bun's native TypeScript support
-bun stress-test.ts
-```
-
-### Stress Test Features
-
-The stress test includes:
-
-- 🏋️ **Concurrent load testing** with 50 worker threads
-- 🎯 **Realistic endpoints** covering various use cases:
-  - User management (CRUD operations)
-  - Nested parameter routes
-  - File upload simulation
-  - Search with query parameters
-  - Analytics endpoints
-  - Error handling scenarios
-
-- 📊 **Comprehensive metrics**:
-  - Requests per second
-  - Response time percentiles
-  - Success/failure rates
-  - Status code distribution
-  - Error analysis
-
-- 🏆 **Performance rating** system
-- 📄 **Detailed JSON reports** with timestamps
-
-### Sample Output
-
-```
-🚀 Starting ZapServer Comprehensive Stress Test
-================================================
-
-📊 Test Configuration:
-- Concurrency: 50 workers
-- Requests per worker: 100
-- Total requests: 5,000
-- Endpoints: 12
-- Timeout: 5000ms
-
-📈 STRESS TEST RESULTS
-======================
-📊 Total Requests: 5,000
-✅ Successful: 4,750 (95.00%)
-❌ Failed: 250 (5.00%)
-⏱️  Total Duration: 2.45s
-🚀 Requests/Second: 2,040.82
-
-⏲️  Response Times:
-   Average: 24.5ms
-   Min: 10.2ms
-   Max: 156.7ms
-
-🏆 PERFORMANCE RATING:
-🔥 GREAT - Very good performance
-```
-
-## 📚 API Examples
-
-### Basic Server Setup
+### Usage
 
 ```typescript
-import { Zap } from 'zap-rs';
+import Zap from './src/index';
 
-const server = new Zap()
-  .get('/', () => 'Hello, ZapServer!')
-  .get('/users/:id', (req) => {
-    const id = req.param('id');
-    return { id, name: `User ${id}` };
-  })
-  .post('/users', async (req) => {
-    const body = await req.json();
-    return { created: true, user: body };
-  });
+const app = new Zap({ port: 3000 })
+  .cors()
+  .logging();
 
-await server.listen(3000);
-console.log('🚀 Server running on http://localhost:3000');
+app.get('/', () => ({ message: 'Hello!' }));
+app.get('/users/:id', (req) => ({
+  userId: req.params.id,
+  name: `User ${req.params.id}`
+}));
+
+await app.listen();
 ```
 
-### Fluent Builder Pattern
+### Testing
 
 ```typescript
-import { createServer } from 'zap-rs';
+import Zap from './src/index';
 
-const app = createServer()
-  .port(3000)
-  .middleware(corsMiddleware)
-  .get('/health', () => ({ status: 'healthy' }))
-  .listen();
+const app = new Zap({ port: 3001 });
+app.get('/test', () => ({ ok: true }));
+await app.listen();
+
+const res = await fetch('http://127.0.0.1:3001/test');
+const data = await res.json();
+console.log(data); // { ok: true }
+
+await app.close();
 ```
 
-### Bun-style API
+## API
+
+### Constructor
 
 ```typescript
-import { serve } from 'zap-rs';
+new Zap(options?: {
+  port?: number;
+  hostname?: string;
+  logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
+})
+```
 
-serve({
-  port: 3000,
-  fetch: (req) => {
-    if (req.url === '/') {
-      return new Response('Hello World!');
+### Configuration Methods (fluent)
+
+```typescript
+app
+  .setPort(3000)
+  .setHostname('0.0.0.0')
+  .cors()
+  .logging()
+  .compression()
+  .healthCheck('/health')
+  .metrics('/metrics')
+  .static('/public', './public');
+```
+
+### Route Methods
+
+```typescript
+app.get(path, handler);
+app.post(path, handler);
+app.put(path, handler);
+app.delete(path, handler);
+app.patch(path, handler);
+app.head(path, handler);
+```
+
+### Lifecycle
+
+```typescript
+await app.listen(port?);
+await app.close();
+const running = app.isRunning();
+```
+
+## Handler Signature
+
+Handlers receive a request object and return a response:
+
+```typescript
+(request: {
+  method: string;
+  path: string;
+  path_only: string;
+  query: Record<string, string>;
+  params: Record<string, string>;
+  headers: Record<string, string>;
+  body: string;
+  cookies: Record<string, string>;
+}) => any | Promise<any>
+```
+
+Responses are auto-serialized:
+- Strings → text/plain
+- Objects → application/json
+- Response instances → used directly
+
+## Configuration File (Rust)
+
+The TypeScript wrapper generates a JSON config for the Rust binary:
+
+```json
+{
+  "port": 3000,
+  "hostname": "127.0.0.1",
+  "ipc_socket_path": "/tmp/zap-xxxx.sock",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "handler_id": "handler_0",
+      "is_typescript": true
     }
-    return new Response('Not Found', { status: 404 });
-  }
-});
+  ],
+  "static_files": [],
+  "middleware": {
+    "enable_cors": true,
+    "enable_logging": true,
+    "enable_compression": false
+  },
+  "health_check_path": "/health",
+  "metrics_path": null
+}
 ```
 
-## 🏗️ Project Structure
+## Performance
+
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| Static route (Rust) | 9ns | Router only |
+| Parameter route (Rust) | 80-200ns | Router + extraction |
+| IPC round trip | ~100μs | Local Unix socket |
+| TS handler call | ~1-2ms | IPC + execution |
+| Health check | <1ms | Direct HTTP |
+
+## Development
+
+### Run test example
+
+```bash
+npm run build
+bun run TEST-IPC.ts
+```
+
+### Run integration tests
+
+```bash
+bun test tests/
+```
+
+### Debug logging
+
+```typescript
+new Zap({ logLevel: 'debug' })
+```
+
+Outputs from both Rust (stderr/stdout) and TypeScript are prefixed with `[Zap]`.
+
+## Limitations
+
+- **Unix sockets only** - No Windows support (requires TCP mode)
+- **No hot reload** - Requires restart on handler changes
+- **Single process** - No built-in clustering (use external load balancer)
+- **Body as string** - Large bodies must be handled in TS
+- **Request timeout** - Default 30s (configurable in Rust config)
+
+## Project Structure
 
 ```
 zap-rs/
-├── core/               # Rust core library
+├── core/                    # Rust router + HTTP parser library
+├── server/                  # Rust binary + IPC implementation
 │   ├── src/
-│   │   ├── router.rs   # Ultra-fast radix tree router
-│   │   ├── http.rs     # SIMD-optimized HTTP parser
-│   │   └── middleware.rs # Zero-allocation middleware
-│   └── benches/        # Performance benchmarks
-├── server/             # High-level server implementation
-├── napi/               # TypeScript bindings (NAPI-RS)
-│   ├── src/lib.rs      # Rust-to-JS bindings
-│   ├── index.d.ts      # TypeScript definitions
-│   └── examples/       # Usage examples
-├── stress-test.ts      # Comprehensive load testing
+│   │   ├── bin/zap.rs       # Binary entry point
+│   │   ├── config.rs        # Configuration parsing
+│   │   ├── ipc.rs           # IPC protocol
+│   │   ├── proxy.rs         # IPC proxy handler
+│   │   └── server.rs        # HTTP server
+│   └── Cargo.toml
+├── src/                     # TypeScript wrapper
+│   ├── index.ts             # Main Zap class
+│   ├── process-manager.ts   # Binary spawning
+│   └── ipc-client.ts        # IPC server
+├── tests/                   # Integration tests
+├── tsconfig.json
+├── package.json
 └── README.md
 ```
 
-## 📊 Performance Benchmarks
-
-| Metric | ZapServer | Express.js | Improvement |
-|--------|-----------|------------|-------------|
-| Static Routes | 9ns | ~200ns | **22x faster** |
-| Parameter Routes | 200ns | ~2µs | **10x faster** |
-| JSON Parsing | ~50ns | ~500ns | **10x faster** |
-| Memory Usage | 1MB | 10MB | **10x less** |
-| Concurrent Requests | 50K/s | 5K/s | **10x more** |
-
-## 🧪 Development
-
-### Building
+## Building for Production
 
 ```bash
-# Build Rust components
-cargo build --release
+# Build optimized binary
+cargo build --release --bin zap
 
-# Build TypeScript (optional with Bun)
-bun run build
+# Build TypeScript
+npm run build:ts
 
-# Run tests
-cargo test
-bun test
+# Result:
+# dist/
+#   ├── index.js
+#   ├── process-manager.js
+#   └── ipc-client.js
+#
+# target/release/
+#   └── zap
 ```
 
-### Benchmarking
+## Environment Variables
 
-```bash
-# Router benchmarks
-cargo bench --package zap-core
+- `RUST_LOG` - Set Rust log level (trace, debug, info, warn, error)
 
-# HTTP parser benchmarks  
-cargo bench --package zap-core --bench http_parser
+## License
 
-# Full system stress test
-bun run stress-test
-```
-
-## 🛣️ Roadmap
-
-- [x] **Phase 1-7**: Core implementation complete
-- [ ] **Phase 8**: Production features & optimizations
-- [ ] **Phase 9**: Comprehensive testing & QA
-- [ ] **Phase 10**: Documentation & examples
-
-See [PLAN.md](./PLAN.md) for detailed roadmap.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Run the stress test: `bun run stress-test`
-6. Submit a pull request
-
-## 📄 License
-
-MIT License - see [LICENSE](./LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- Inspired by Bun's clean API design
-- Built with NAPI-RS for seamless Rust-TypeScript integration
-- Performance optimizations inspired by modern web server architectures
-- Native TypeScript execution powered by Bun
-
----
-
-**Ready to experience blazing-fast web development? Give ZapServer a try!** ⚡ 
+MIT

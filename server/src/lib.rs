@@ -87,6 +87,8 @@
 pub mod config;
 pub mod error;
 pub mod handler;
+pub mod ipc;
+pub mod proxy;
 pub mod request;
 pub mod response;
 pub mod server;
@@ -94,9 +96,11 @@ pub mod r#static;
 pub mod utils;
 
 // Re-export main types for convenient use
-pub use config::ServerConfig;
-pub use error::ZapError;
+pub use config::{ServerConfig, ZapConfig};
+pub use error::{ZapError, ZapResult};
 pub use handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
+pub use ipc::{IpcMessage, IpcRequest, IpcServer, IpcClient};
+pub use proxy::ProxyHandler;
 pub use request::RequestData;
 pub use response::{Json, ZapResponse};
 pub use server::Zap;

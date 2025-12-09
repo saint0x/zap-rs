@@ -5,7 +5,6 @@
 
 use clap::Parser;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;

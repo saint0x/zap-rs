@@ -3,7 +3,6 @@
 //! Type-safe error handling throughout the application with proper
 //! error propagation and context preservation.
 
-use std::fmt;
 use std::io;
 use thiserror::Error;
 

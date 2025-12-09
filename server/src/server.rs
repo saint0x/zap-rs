@@ -16,10 +16,9 @@ use zap_core::{
     HttpParser, Method, MiddlewareChain, Request, Router,
 };
 
-use crate::config::{ServerConfig, ZapConfig, RouteConfig};
+use crate::config::{ServerConfig, ZapConfig};
 use crate::error::{ZapError, ZapResult};
 use crate::handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
-use crate::ipc::IpcServer;
 use crate::proxy::ProxyHandler;
 use crate::request::RequestData;
 use crate::response::{Json, ZapResponse};

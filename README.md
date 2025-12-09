@@ -1,6 +1,8 @@
-# Zap - Ultra-Fast HTTP Server for Node.js/Bun
+# ⚡ Zap
 
-Production-grade HTTP server combining Rust performance with TypeScript flexibility via Unix socket IPC.
+Ultra-fast HTTP framework written in Rust with TypeScript bindings using Unix domain socket IPC.
+
+Production-grade server combining Rust performance with TypeScript flexibility.
 
 ## Architecture
 

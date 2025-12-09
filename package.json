@@ -34,7 +34,7 @@
     "performance",
     "web-server",
     "fast",
-    "napi",
+    "ipc",
     "bun"
   ],
   "author": "saint0x",

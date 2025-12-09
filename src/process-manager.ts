@@ -61,10 +61,13 @@ export class ProcessManager {
    */
   private getDefaultBinaryPath(): string {
     // Try multiple locations
+    const arch = process.arch === "arm64" ? "aarch64-apple-darwin" : `${process.arch}-${process.platform}`;
     const candidates = [
+      join(__dirname, `../target/${arch}/release/zap`),
       join(__dirname, "../target/release/zap"),
       join(__dirname, "../server/target/release/zap"),
       join(process.cwd(), "target/release/zap"),
+      join(process.cwd(), `target/${arch}/release/zap`),
       "zap", // System PATH
     ];
 

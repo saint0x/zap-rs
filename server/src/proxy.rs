@@ -9,7 +9,6 @@
 use crate::error::{ZapError, ZapResult};
 use crate::handler::Handler;
 use crate::ipc::{IpcClient, IpcMessage, IpcRequest};
-use crate::request::RequestData;
 use crate::response::ZapResponse;
 use std::future::Future;
 use std::pin::Pin;

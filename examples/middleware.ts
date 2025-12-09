@@ -17,8 +17,14 @@ async function main() {
     .compression() // Enable response compression
     .healthCheck("/api/health"); // Custom health check endpoint
 
-  // Health check endpoint
-  app.get("/api/health", () => ({
+  // Root endpoint
+  app.get("/", () => ({
+    message: "Welcome to Zap with Middleware",
+    features: ["CORS", "Logging", "Compression"],
+  }));
+
+  // Custom status endpoint (in addition to default /health)
+  app.get("/api/status/health", () => ({
     status: "healthy",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
@@ -44,12 +50,17 @@ async function main() {
     },
   }));
 
-  await app.listen();
-  console.log("✅ Server with middleware running on http://127.0.0.1:3001");
-  console.log("   CORS: Enabled ✓");
-  console.log("   Logging: Enabled ✓");
-  console.log("   Compression: Enabled ✓");
-  console.log("   Health check: /api/health");
+  try {
+    await app.listen();
+    console.log("✅ Server with middleware running on http://127.0.0.1:3001");
+    console.log("   CORS: Enabled ✓");
+    console.log("   Logging: Enabled ✓");
+    console.log("   Compression: Enabled ✓");
+    console.log("   Health check: /api/health");
+  } catch (error: any) {
+    console.error("❌ Failed to start server:", error.message);
+    process.exit(1);
+  }
 }
 
 main().catch(console.error);

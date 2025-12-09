@@ -17,16 +17,28 @@ async function main() {
   }));
 
   // Route with path parameters
-  app.getJson("/users/:id", (req: any) => ({
+  app.getJson("/api/users/:id", (req: any) => ({
     userId: req.params?.id,
     message: `User ${req.params?.id} profile`,
   }));
 
   // POST route for creating data
-  app.post("/api/data", (req: any) => ({
-    received: req.body,
-    timestamp: new Date().toISOString(),
-  }));
+  app.post("/api/data", (req: any) => {
+    try {
+      const body = JSON.parse(req.body || "{}");
+      return {
+        success: true,
+        received: body,
+        timestamp: new Date().toISOString(),
+      };
+    } catch {
+      return {
+        success: true,
+        received: req.body,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  });
 
   await app.listen();
   console.log("✅ Server running on http://127.0.0.1:3000");

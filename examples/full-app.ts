@@ -20,15 +20,17 @@ async function main() {
   // Enable middleware
   app.cors().logging();
 
+  // Root endpoint
+  app.get("/", () => ({
+    message: "Welcome to Zap REST API",
+    docs: "GET /api/status for API information",
+  }));
+
   // ============================================================================
   // Health & Status Endpoints
   // ============================================================================
-
-  app.get("/health", () => ({
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  }));
+  // Note: /health is provided by default by Zap framework
+  // Custom status endpoint:
 
   app.get("/api/status", () => ({
     service: "User API",
@@ -191,9 +193,13 @@ async function main() {
     throw new Error("Intentional error for testing");
   });
 
-  await app.listen();
-
-  console.log("✅ Full application running on http://127.0.0.1:3002");
+  try {
+    await app.listen();
+    console.log("✅ Full application running on http://127.0.0.1:3002");
+  } catch (error: any) {
+    console.error("❌ Failed to start server:", error.message);
+    process.exit(1);
+  }
   console.log("\n📚 Available endpoints:");
   console.log("   GET    /health                   - Health check");
   console.log("   GET    /api/status               - API status");

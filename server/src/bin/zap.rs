@@ -15,7 +15,7 @@ use zap_server::Zap;
 
 #[derive(Parser, Debug)]
 #[command(name = "Zap")]
-#[command(version = "1.0.0")]
+#[command(version = "0.0.1")]
 #[command(about = "Ultra-fast HTTP server for Node.js/Bun", long_about = None)]
 struct Args {
     /// Path to JSON configuration file

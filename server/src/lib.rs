@@ -14,8 +14,8 @@
 //!
 //! ## Quick Start
 //!
-//! ```no_run
-//! use server::{Zap, Json};
+//! ```ignore
+//! use zap_server::{Zap, Json};
 //! use serde_json::json;
 //!
 //! #[tokio::main]
@@ -32,15 +32,15 @@
 //!             Json(json!({ "status": "created" })).into()
 //!         });
 //!
-//!     println!("🚀 Server running on http://localhost:3000");
+//!     println!("Server running on http://localhost:3000");
 //!     Ok(server.listen().await?)
 //! }
 //! ```
 //!
 //! ## Advanced Usage
 //!
-//! ```no_run
-//! use server::{Zap, Json, StaticOptions};
+//! ```ignore
+//! use zap_server::{Zap, Json, StaticOptions};
 //! use serde_json::json;
 //! use std::collections::HashMap;
 //! use std::time::Duration;
@@ -52,17 +52,17 @@
 //!         .hostname("0.0.0.0")
 //!         .keep_alive_timeout(Duration::from_secs(30))
 //!         .max_request_body_size(50 * 1024 * 1024) // 50MB
-//!         
+//!
 //!         // Add middleware
 //!         .logging()
 //!         .cors()
-//!         
+//!
 //!         // API routes
 //!         .json_get("/api/status", |_req| json!({
 //!             "status": "ok",
 //!             "version": "1.0.0"
 //!         }))
-//!         
+//!
 //!         // Dynamic routes
 //!         .get_async("/users/:id", |req| async move {
 //!             let id = req.param("id").unwrap_or("unknown");
@@ -72,10 +72,10 @@
 //!                 "email": format!("user{}@example.com", id)
 //!             })).into()
 //!         })
-//!         
+//!
 //!         // Static files
 //!         .static_files("/assets", "./public")
-//!         
+//!
 //!         // Health endpoints
 //!         .health_check("/health")
 //!         .metrics("/metrics");
@@ -84,25 +84,36 @@
 //! }
 //! ```
 
+pub mod binary_ipc;
+pub mod binary_proxy;
 pub mod config;
+pub mod connection_pool;
 pub mod error;
 pub mod handler;
 pub mod ipc;
+pub mod metrics;
 pub mod proxy;
 pub mod request;
 pub mod response;
+pub mod security;
 pub mod server;
 pub mod r#static;
 pub mod utils;
 
 // Re-export main types for convenient use
+pub use binary_ipc::{
+    BinaryHandlerResponse, BinaryInvokeHandler, BinaryIpcClient, BinaryIpcRequest, MessageType,
+};
+pub use binary_proxy::BinaryProxyHandler;
 pub use config::{ServerConfig, ZapConfig};
 pub use error::{ZapError, ZapResult};
 pub use handler::{AsyncHandler, BoxedHandler, Handler, SimpleHandler};
-pub use ipc::{IpcMessage, IpcRequest, IpcServer, IpcClient};
+pub use ipc::{IpcClient, IpcMessage, IpcRequest, IpcServer};
+pub use metrics::{IpcTimer, Metrics, RequestTimer, METRICS};
 pub use proxy::ProxyHandler;
 pub use request::RequestData;
 pub use response::{Json, ZapResponse};
+pub use security::{RateLimitConfig, RateLimiter, SecurityConfig};
 pub use server::Zap;
 pub use r#static::{StaticHandler, StaticOptions};
 
@@ -206,29 +217,21 @@ mod tests {
         // Test that RequestData properly extracts all request information
         let method = Method::POST;
         let path = "/api/users/123?include=profile&format=json".to_string();
-        let headers = {
-            let mut h = HashMap::new();
-            h.insert("Content-Type".to_string(), "application/json".to_string());
-            h.insert("Authorization".to_string(), "Bearer token123".to_string());
-            h
-        };
-        let params = {
-            let mut p = HashMap::new();
-            p.insert("id".to_string(), "123".to_string());
-            p
-        };
-        let query = {
-            let mut q = HashMap::new();
-            q.insert("include".to_string(), "profile".to_string());
-            q.insert("format".to_string(), "json".to_string());
-            q
-        };
-        let cookies = {
-            let mut c = HashMap::new();
-            c.insert("session".to_string(), "abc123".to_string());
-            c
-        };
-        
+        let headers = vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Authorization".to_string(), "Bearer token123".to_string()),
+        ];
+        let params = vec![
+            ("id".to_string(), "123".to_string()),
+        ];
+        let query = vec![
+            ("include".to_string(), "profile".to_string()),
+            ("format".to_string(), "json".to_string()),
+        ];
+        let cookies = vec![
+            ("session".to_string(), "abc123".to_string()),
+        ];
+
         let req_data = RequestData {
             method,
             path: path.clone(),

@@ -6,6 +6,7 @@
 //! 3. Waits for response with timeout
 //! 4. Converts response back to HTTP
 
+use crate::connection_pool;
 use crate::error::{ZapError, ZapResult};
 use crate::handler::Handler;
 use crate::ipc::{IpcClient, IpcMessage, IpcRequest};
@@ -58,14 +59,16 @@ impl ProxyHandler {
             self.handler_id, request.method, request.path
         );
 
-        // Connect to TypeScript's IPC server
-        let mut client =
-            IpcClient::connect(self.ipc_socket_path.as_str())
-                .await
-                .map_err(|e| {
-                    error!("Failed to connect to IPC: {}", e);
-                    e
-                })?;
+        // Get a pooled connection to TypeScript's IPC server
+        let stream = connection_pool::get_connection(self.ipc_socket_path.as_str())
+            .await
+            .map_err(|e| {
+                error!("Failed to get pooled connection: {}", e);
+                e
+            })?;
+        
+        // Create IPC client with the pooled connection
+        let mut client = IpcClient::from_pooled_stream(stream, Arc::clone(&self.ipc_socket_path));
 
         // Create invocation message
         let msg = IpcMessage::InvokeHandler {

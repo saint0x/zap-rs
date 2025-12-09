@@ -16,8 +16,13 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 http = "1.0"
 # HTTP parsing optimizations
 bytes = "1.5"
-# SIMD string operations  
+# SIMD string operations
 simdutf8 = "0.1"
+# Cap'n Proto for ultra-fast binary IPC
+capnp = "0.20"
+capnp-futures = "0.20"
+# rkyv for zero-copy binary serialization (simpler alternative)
+rkyv = { version = "0.8" }
 
 [workspace.dependencies.tokio]
 version = "1.0"
@@ -36,3 +41,7 @@ opt-level = 3
 [profile.bench]
 inherits = "release"
 debug = true
+
+# Criterion for benchmarking
+[workspace.dependencies.criterion]
+version = "0.5"

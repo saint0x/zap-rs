@@ -17,3 +17,10 @@ bytes = { workspace = true }
 simdutf8 = { workspace = true }
 # Async runtime for middleware
 tokio = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "http_benchmark"
+harness = false

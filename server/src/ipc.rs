@@ -6,6 +6,7 @@
 use crate::error::{ZapError, ZapResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
@@ -117,7 +118,8 @@ impl IpcServer {
 
 /// IPC Client - connects to TypeScript's IPC server
 pub struct IpcClient {
-    stream: UnixStream,
+    stream: Option<UnixStream>,
+    socket_path: Option<Arc<String>>, // For connection pooling
 }
 
 impl IpcClient {
@@ -127,7 +129,18 @@ impl IpcClient {
             ZapError::Ipc(format!("Failed to connect to IPC socket: {}", e))
         })?;
 
-        Ok(Self { stream })
+        Ok(Self { 
+            stream: Some(stream),
+            socket_path: None,
+        })
+    }
+    
+    /// Create from a pooled connection
+    pub fn from_pooled_stream(stream: UnixStream, socket_path: Arc<String>) -> Self {
+        Self {
+            stream: Some(stream),
+            socket_path: Some(socket_path),
+        }
     }
 
     /// Send a message over the IPC channel
@@ -135,12 +148,15 @@ impl IpcClient {
         let json = serde_json::to_string(&msg)?;
         let data = format!("{}\n", json); // Newline-delimited for easy framing
 
-        self.stream
+        let stream = self.stream.as_mut()
+            .ok_or_else(|| ZapError::Ipc("Stream already taken".to_string()))?;
+            
+        stream
             .write_all(data.as_bytes())
             .await
             .map_err(|e| ZapError::Ipc(format!("Write error: {}", e)))?;
 
-        self.stream.flush().await.map_err(|e| {
+        stream.flush().await.map_err(|e| {
             ZapError::Ipc(format!("Flush error: {}", e))
         })?;
 
@@ -150,7 +166,11 @@ impl IpcClient {
     /// Receive a message from the IPC channel
     pub async fn recv_message(&mut self) -> ZapResult<Option<IpcMessage>> {
         let mut buffer = String::new();
-        let (reader, _writer) = self.stream.split();
+        
+        let stream = self.stream.as_mut()
+            .ok_or_else(|| ZapError::Ipc("Stream already taken".to_string()))?;
+            
+        let (reader, _writer) = stream.split();
         let mut buf_reader = BufReader::new(reader);
 
         let bytes_read = buf_reader
@@ -166,6 +186,18 @@ impl IpcClient {
             .map_err(|e| ZapError::Ipc(format!("Failed to parse IPC message: {}", e)))?;
 
         Ok(Some(msg))
+    }
+}
+
+impl Drop for IpcClient {
+    fn drop(&mut self) {
+        // Return connection to pool if it came from the pool
+        if let (Some(stream), Some(socket_path)) = (self.stream.take(), self.socket_path.take()) {
+            // Return to pool in background
+            tokio::spawn(async move {
+                crate::connection_pool::return_connection(stream, socket_path.to_string()).await;
+            });
+        }
     }
 }
 

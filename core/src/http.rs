@@ -66,6 +66,27 @@ pub struct ParsedRequest<'a> {
     pub total_size: usize,
 }
 
+impl<'a> ParsedRequest<'a> {
+    /// Create directly from parts (for zero-copy bridge from Hyper)
+    /// This avoids the double parsing overhead
+    pub fn from_parts(
+        method: Method,
+        path: &'a str,
+        version: &'a str,
+        headers: Headers<'a>,
+        body_size: usize,
+    ) -> Self {
+        Self {
+            method,
+            path,
+            version,
+            headers,
+            body_offset: 0, // Not used when creating directly
+            total_size: body_size,
+        }
+    }
+}
+
 /// Zero-copy header storage optimized for lookups
 #[derive(Debug)]
 pub struct Headers<'a> {
@@ -82,6 +103,12 @@ impl<'a> Headers<'a> {
             map: AHashMap::with_capacity(capacity),
             count: 0,
         }
+    }
+
+    /// Create from existing header map (for zero-copy bridge from Hyper)
+    pub fn from_map(map: AHashMap<&'a str, &'a str>) -> Self {
+        let count = map.len();
+        Self { map, count }
     }
 
     /// Insert header (internal use)

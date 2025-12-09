@@ -60,6 +60,7 @@ impl<T> RadixTree<T> {
     }
 
     /// Find handler for path with parameter extraction
+    #[inline]
     pub fn find<'a>(&'a self, path: &'a str) -> Option<(&'a T, Params<'a>)> {
         let mut params = Params::new();
         let clean_path = if path.starts_with('/') { &path[1..] } else { path };

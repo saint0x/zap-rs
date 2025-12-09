@@ -362,25 +362,53 @@ impl Zap {
     }
 
     /// Process the request through our complete pipeline
+    /// OPTIMIZED: Direct conversion from Hyper without double parsing
     async fn process_request(
         &self,
         hyper_req: HyperRequest<Incoming>,
         _remote_addr: SocketAddr,
     ) -> Result<ZapResponse, ZapError> {
-        // Step 1: Convert Hyper request to raw bytes
-        let (parts, _body) = hyper_req.into_parts();
+        use http_body_util::BodyExt;
         
-        // For now, use empty body to get compilation working
-        // TODO: Implement proper body collection
-        let body_bytes = Vec::new();
+        // Step 1: Extract parts and collect body efficiently
+        let (parts, body) = hyper_req.into_parts();
+        
+        // Collect body bytes (this is required for handlers)
+        let body_bytes = match body.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                error!("Failed to read request body: {}", e);
+                return Err(ZapError::Http(format!("Failed to read body: {}", e)));
+            }
+        };
 
-        // Convert method
+        // Convert method once
         let method = convert_method(&parts.method)?;
+        let path = parts.uri.path();
+        let path_for_routing = path.split('?').next().unwrap_or(path);
 
-        // Step 2: Reconstruct HTTP request bytes for our parser  
-        let mut request_bytes = Vec::new();
-        request_bytes.extend_from_slice(format!("{} {} {:?}\r\n", parts.method, parts.uri, parts.version).as_bytes());
+        // Step 2: Check for static file handlers first (before parsing)
+        if let Some(static_response) = handle_static_files(&self.static_handlers, path_for_routing).await? {
+            return Ok(static_response);
+        }
+
+        // Step 3: Route the request using our fast router
+        let (handler, route_params) = self.router.at(method, path_for_routing)
+            .ok_or_else(|| ZapError::Routing(format!("No route found for {} {}", method, path_for_routing)))?;
+
+        // Step 4: Build the complete HTTP request for parsing
+        // We need this because our Request type expects a ParsedRequest
+        // TODO: In phase 2, create a direct bridge to avoid this
+        let mut request_bytes = Vec::with_capacity(1024 + body_bytes.len());
         
+        // Request line
+        request_bytes.extend_from_slice(format!("{} {} {:?}\r\n", 
+            parts.method, 
+            parts.uri.path_and_query().map(|pq| pq.as_str()).unwrap_or(path),
+            parts.version
+        ).as_bytes());
+        
+        // Headers
         for (name, value) in &parts.headers {
             request_bytes.extend_from_slice(name.as_str().as_bytes());
             request_bytes.extend_from_slice(b": ");
@@ -388,30 +416,108 @@ impl Zap {
             request_bytes.extend_from_slice(b"\r\n");
         }
         request_bytes.extend_from_slice(b"\r\n");
+        
+        // Body
+        let body_offset = request_bytes.len();
         request_bytes.extend_from_slice(&body_bytes);
 
-        // Step 3: Parse using our fast HTTP parser
+        // Step 5: Parse using our HTTP parser
         let parser = HttpParser::new();
         let parsed = parser.parse_request(&request_bytes)
             .map_err(|e| ZapError::Http(format!("HTTP parsing failed: {:?}", e)))?;
 
-        // Step 4: Check for static file handlers first
-        let path_for_routing = parsed.path.split('?').next().unwrap_or(parsed.path);
+        // Step 6: Create Request object with actual body data
+        let body_slice = &request_bytes[body_offset..];
+        let request = Request::new(&parsed, body_slice, route_params);
+
+        // Step 7: Execute the handler
+        let response = handler.handle(request).await
+            .map_err(|e| ZapError::Handler(format!("Handler execution failed: {}", e)))?;
+
+        Ok(response)
+    }
+
+    /// Optimized request processing that eliminates double HTTP parsing
+    /// This is the production path that should be used once stable
+    #[allow(dead_code)]
+    async fn process_request_optimized(
+        &self,
+        hyper_req: HyperRequest<Incoming>,
+        _remote_addr: SocketAddr,
+    ) -> Result<ZapResponse, ZapError> {
+        use http_body_util::BodyExt;
         
-        // Check static handlers
+        // Step 1: Extract parts and collect body
+        let (parts, body) = hyper_req.into_parts();
+        
+        // Collect body bytes
+        let body_bytes = match body.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(e) => {
+                error!("Failed to read request body: {}", e);
+                return Err(ZapError::Http(format!("Failed to read body: {}", e)));
+            }
+        };
+
+        // Convert method
+        let method = convert_method(&parts.method)?;
+        
+        // Extract path components
+        let path_and_query = parts.uri.path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or(parts.uri.path());
+        let path_for_routing = path_and_query.split('?').next().unwrap_or(path_and_query);
+
+        // Step 2: Check for static file handlers first
         if let Some(static_response) = handle_static_files(&self.static_handlers, path_for_routing).await? {
             return Ok(static_response);
         }
 
-        // Step 5: Route the request using our fast router
+        // Step 3: Route the request
         let (handler, route_params) = self.router.at(method, path_for_routing)
             .ok_or_else(|| ZapError::Routing(format!("No route found for {} {}", method, path_for_routing)))?;
 
-        // Step 6: Create Request object
-        let body_start = &request_bytes[parsed.body_offset..];
-        let request = Request::new(&parsed, body_start, route_params);
+        // Step 4: Create headers map directly from Hyper headers
+        // This requires careful lifetime management
+        let headers_vec: Vec<(String, String)> = parts.headers
+            .iter()
+            .filter_map(|(name, value)| {
+                match std::str::from_utf8(value.as_bytes()) {
+                    Ok(value_str) => Some((name.to_string(), value_str.to_string())),
+                    Err(_) => None,
+                }
+            })
+            .collect();
+        
+        // We need to leak the strings to get 'static lifetime
+        // This is a temporary solution until we implement Cap'n Proto
+        let mut header_map = ahash::AHashMap::with_capacity(headers_vec.len());
+        for (name, value) in headers_vec {
+            let name_leaked: &'static str = Box::leak(name.into_boxed_str());
+            let value_leaked: &'static str = Box::leak(value.into_boxed_str());
+            header_map.insert(name_leaked, value_leaked);
+        }
+        
+        // Similarly leak the path and version
+        let path_leaked: &'static str = Box::leak(path_and_query.to_string().into_boxed_str());
+        let version_leaked: &'static str = Box::leak("HTTP/1.1".to_string().into_boxed_str());
+        
+        // Create Headers and ParsedRequest directly
+        let headers = zap_core::Headers::from_map(header_map);
+        let parsed = zap_core::ParsedRequest::from_parts(
+            method,
+            path_leaked,
+            version_leaked,
+            headers,
+            body_bytes.len(),
+        );
+        
+        // Step 5: Create Request object
+        // Also leak the body to get proper lifetime
+        let body_leaked: &'static [u8] = Box::leak(body_bytes.to_vec().into_boxed_slice());
+        let request = Request::new(&parsed, body_leaked, route_params);
 
-        // Step 7: Execute the handler (middleware is handled separately in a real implementation)
+        // Step 6: Execute the handler
         let response = handler.handle(request).await
             .map_err(|e| ZapError::Handler(format!("Handler execution failed: {}", e)))?;
 

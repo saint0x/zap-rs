@@ -1,6 +1,6 @@
 {
   "name": "zap-rs",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Ultra-fast HTTP framework written in Rust with TypeScript bindings - IPC-based architecture",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,9 +21,6 @@
     "test:unit": "bun test tests/unit/",
     "lint": "bun run tsc --noEmit",
     "format": "prettier --write src/ server/src/",
-    "stress-test": "bun run stress-test.ts",
-    "stress-test:quick": "bun run stress-test.ts --quick",
-    "install-deps": "bun install",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
